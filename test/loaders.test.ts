@@ -240,6 +240,9 @@ describe('loadCredentials()', () => {
         sessionToken: 'tok',
       });
       expect(result).toEqual({ apiKey: TEST_API_KEY });
+      expect(result.email).toBeUndefined();
+      expect(result.password).toBeUndefined();
+      expect(result.sessionToken).toBeUndefined();
     });
 
     it('should prefer email/password over sessionToken when no apiKey', () => {
@@ -249,6 +252,8 @@ describe('loadCredentials()', () => {
         sessionToken: 'tok',
       });
       expect(result).toEqual({ email: 'a@b.com', password: 'pw' });
+      expect(result.apiKey).toBeUndefined();
+      expect(result.sessionToken).toBeUndefined();
     });
 
     it('should ignore email without password', () => {
@@ -294,6 +299,8 @@ describe('loadCredentials()', () => {
       vi.stubEnv('ULUOPS_PASSWORD', 'envpw');
       const result = loadCredentials({ envVars: testEnvVars });
       expect(result).toEqual({ apiKey: TEST_API_KEY });
+      expect(result.email).toBeUndefined();
+      expect(result.password).toBeUndefined();
       vi.unstubAllEnvs();
     });
   });

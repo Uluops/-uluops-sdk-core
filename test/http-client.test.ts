@@ -486,6 +486,38 @@ describe('401 token refresh', () => {
     expect(r2).toBe('result2');
   });
 
+  it('should refresh token on 401 even after a transient retry', async () => {
+    // Attempt 1: transient 503 triggers retry
+    nock(TEST_BASE_URL)
+      .get(apiPath('/late401'))
+      .reply(503, { error: { message: 'down' } });
+
+    // Attempt 2: token expired during retry delay
+    nock(TEST_BASE_URL)
+      .get(apiPath('/late401'))
+      .reply(401, { error: { message: 'expired' } });
+
+    // Token refresh succeeds
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'), { email: '', password: '' })
+      .reply(200, { data: { sessionToken: 'new-tok', expiresAt: '2099-01-01' } });
+
+    // Attempt 3: retried with fresh token
+    nock(TEST_BASE_URL)
+      .get(apiPath('/late401'))
+      .matchHeader('Authorization', 'Bearer new-tok')
+      .reply(200, { data: 'recovered' });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: 'stale-tok',
+      retries: 4,
+    });
+
+    const result = await client.get('/late401');
+    expect(result).toBe('recovered');
+  });
+
   it('should throw original error when refresh fails', async () => {
     // First request returns 401
     nock(TEST_BASE_URL)

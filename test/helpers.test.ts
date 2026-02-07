@@ -100,6 +100,37 @@ describe('retry()', () => {
     const result = await retry(fn);
     expect(result).toBe(42);
   });
+
+  it('should handle concurrent retry calls independently', async () => {
+    let call1Count = 0;
+    let call2Count = 0;
+    const fn1 = vi.fn(async () => {
+      call1Count++;
+      if (call1Count < 2) throw new Error('fn1-fail');
+      return 'fn1-ok';
+    });
+    const fn2 = vi.fn(async () => {
+      call2Count++;
+      if (call2Count < 3) throw new Error('fn2-fail');
+      return 'fn2-ok';
+    });
+
+    const [r1, r2] = await Promise.all([
+      retry(fn1, { maxRetries: 3, baseDelayMs: 1 }),
+      retry(fn2, { maxRetries: 3, baseDelayMs: 1 }),
+    ]);
+
+    expect(r1).toBe('fn1-ok');
+    expect(r2).toBe('fn2-ok');
+    expect(fn1).toHaveBeenCalledTimes(2);
+    expect(fn2).toHaveBeenCalledTimes(3);
+  });
+
+  it('should throw immediately on maxRetries of 1', async () => {
+    const fn = vi.fn().mockRejectedValue(new Error('single'));
+    await expect(retry(fn, { maxRetries: 1, baseDelayMs: 1 })).rejects.toThrow('single');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

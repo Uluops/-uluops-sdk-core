@@ -204,6 +204,7 @@ export class HttpClient {
     const maxAttempts = options?.retries ?? this.retries;
     const canRetry = method === 'GET' || (options?.retryMutations === true);
     let lastError: Error | null = null;
+    let refreshAttempted = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -213,7 +214,7 @@ export class HttpClient {
         }
         return result;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
+        lastError = error instanceof Error ? error : new Error(String(error), { cause: error });
 
         if (this.shouldRetryTransient(lastError, canRetry, attempt, maxAttempts)) {
           const delay = this.calculateBackoff(attempt);
@@ -222,7 +223,8 @@ export class HttpClient {
           continue;
         }
 
-        if (await this.attemptTokenRefresh(lastError, attempt)) {
+        if (!refreshAttempted && await this.attemptTokenRefresh(lastError)) {
+          refreshAttempted = true;
           continue;
         }
 
@@ -251,11 +253,10 @@ export class HttpClient {
   }
 
   /**
-   * Attempt a token refresh on 401 errors (first attempt only, deduplicated).
+   * Attempt a token refresh on 401 errors (deduplicated).
    * Returns true if refresh succeeded and the request should be retried.
    */
-  private async attemptTokenRefresh(error: Error, attempt: number): Promise<boolean> {
-    if (attempt !== 1) return false;
+  private async attemptTokenRefresh(error: Error): Promise<boolean> {
     if (!(error instanceof UnauthorizedError)) return false;
     if (!this.authStrategy?.canRefresh()) return false;
 
