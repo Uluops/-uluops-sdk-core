@@ -609,6 +609,16 @@ export class HttpClient {
     }
 
     if (error instanceof TypeError) {
+      // When no credentials are configured and the server is unreachable,
+      // the most helpful error is an UnauthorizedError that tells the user
+      // to configure credentials — rather than a raw NetworkError.
+      if (!this.authStrategy) {
+        return new UnauthorizedError(
+          `Network error: ${error.message}. No credentials configured — set ULUOPS_API_KEY ` +
+          'environment variable, pass apiKey to the constructor, or provide sessionToken. ' +
+          'See: https://github.com/uluops/uluops/tree/main/packages/sdk-core#authentication'
+        );
+      }
       return new NetworkError(error.message, this.baseUrl);
     }
 

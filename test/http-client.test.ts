@@ -561,6 +561,42 @@ describe('401 token refresh', () => {
 
     await expect(client.get('/protected2')).rejects.toThrow(UnauthorizedError);
   });
+
+  it('should propagate refresh failure to all concurrent waiters', async () => {
+    // Two concurrent requests both get 401
+    nock(TEST_BASE_URL)
+      .get(apiPath('/fail-concurrent1'))
+      .matchHeader('Authorization', 'Bearer stale-tok')
+      .reply(401, { error: { message: 'expired' } });
+    nock(TEST_BASE_URL)
+      .get(apiPath('/fail-concurrent2'))
+      .matchHeader('Authorization', 'Bearer stale-tok')
+      .reply(401, { error: { message: 'expired' } });
+
+    // Single login endpoint fails — both waiters should receive the failure
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'), { email: 'a@b.com', password: 'wrong' })
+      .reply(401, { error: { message: 'bad credentials' } });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: 'stale-tok',
+      email: 'a@b.com',
+      password: 'wrong',
+      retries: 1,
+    });
+
+    const results = await Promise.allSettled([
+      client.get('/fail-concurrent1'),
+      client.get('/fail-concurrent2'),
+    ]);
+
+    // Both requests should reject with UnauthorizedError
+    expect(results[0].status).toBe('rejected');
+    expect(results[1].status).toBe('rejected');
+    expect((results[0] as PromiseRejectedResult).reason).toBeInstanceOf(UnauthorizedError);
+    expect((results[1] as PromiseRejectedResult).reason).toBeInstanceOf(UnauthorizedError);
+  });
 });
 
 // ---------------------------------------------------------------------------
