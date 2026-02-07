@@ -46,12 +46,14 @@
     "infrastructure"
   ],
   "author": "UluOps <hello@uluops.ai>",
+  "bugs": {
+    "url": "https://github.com/Uluops/-uluops-sdk-core/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/uluops/uluops.git",
-    "directory": "packages/sdk-core"
+    "url": "https://github.com/Uluops/-uluops-sdk-core.git"
   },
-  "homepage": "https://github.com/uluops/uluops/tree/main/packages/sdk-core#readme",
+  "homepage": "https://github.com/Uluops/-uluops-sdk-core#readme",
   "license": "MIT",
   "dependencies": {
     "dotenv": "^16.4.7",

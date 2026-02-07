@@ -78,18 +78,28 @@ export interface EnvVarConfig {
 }
 
 /**
- * Stored credentials in credentials.json
+ * Stored credentials in `~/.uluops/credentials.json`.
+ * Supports multiple named profiles with a required `default` profile.
  */
 interface StoredCredentials {
   default?: StoredProfile;
   [profile: string]: StoredProfile | undefined;
 }
 
+/**
+ * A single credential profile stored on disk.
+ * Either an API key (`type: 'api_key'`) or a session token (`type: 'session'`).
+ */
 interface StoredProfile {
+  /** Credential type determines which fields are populated */
   type: 'api_key' | 'session';
+  /** API key (present when `type` is `'api_key'`) */
   apiKey?: string;
+  /** JWT session token (present when `type` is `'session'`) */
   sessionToken?: string;
+  /** ISO 8601 expiration timestamp for session tokens */
   expiresAt?: string;
+  /** Email associated with the session */
   email?: string;
 }
 
@@ -251,7 +261,8 @@ export function loadConfig(options: {
     authBaseUrl?: string;
   };
 } = {}): SdkConfig {
-  loadEnvFiles();
+  // Note: loadEnvFiles() is called inside loadCredentials() below,
+  // so we don't need to call it here.
 
   const envVars = options.envVars;
 
