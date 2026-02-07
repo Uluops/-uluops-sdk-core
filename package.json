@@ -51,6 +51,7 @@
     "url": "https://github.com/uluops/uluops.git",
     "directory": "packages/sdk-core"
   },
+  "homepage": "https://github.com/uluops/uluops/tree/main/packages/sdk-core#readme",
   "license": "MIT",
   "dependencies": {
     "dotenv": "^16.4.7",

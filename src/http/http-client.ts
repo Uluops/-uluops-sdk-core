@@ -334,7 +334,7 @@ export class HttpClient {
           throw new UnauthorizedError(
             'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
             'pass apiKey to the constructor, or provide sessionToken. ' +
-            'See: https://github.com/Uluops/-uluops-sdk-core#authentication'
+            'See: https://github.com/uluops/uluops/tree/main/packages/sdk-core#authentication'
           );
         }
         const errorData = await response.json().catch(() => ({}));
@@ -378,7 +378,10 @@ export class HttpClient {
   }
 
   /**
-   * Make a request that returns the full response (for non-standard responses)
+   * Make a request that returns the full response (for non-standard responses).
+   *
+   * **Note:** This method does not include automatic retry, token refresh on 401,
+   * or rate limit header parsing. Use {@link request} for those features.
    */
   async requestRaw<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -446,7 +449,10 @@ export class HttpClient {
   }
 
   /**
-   * Make a request that returns the raw Response object (for binary data, streaming, etc.)
+   * Make a request that returns binary data (ArrayBuffer).
+   *
+   * **Note:** This method does not include automatic retry, token refresh on 401,
+   * or rate limit header parsing. Use {@link request} for those features.
    */
   async requestBinary(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -594,13 +600,6 @@ export class HttpClient {
     }
 
     if (error instanceof TypeError) {
-      if (!this.authStrategy) {
-        return new UnauthorizedError(
-          'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
-          'pass apiKey to the constructor, or provide sessionToken. ' +
-          `See: https://github.com/Uluops/-uluops-sdk-core#authentication (Network error: ${error.message})`
-        );
-      }
       return new NetworkError(error.message, this.baseUrl);
     }
 

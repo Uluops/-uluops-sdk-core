@@ -201,18 +201,12 @@ describe('JwtSessionAuth', () => {
   });
 
   describe('expiration handling', () => {
-    it('should report not authenticated when token is expired', () => {
-      const client = makeFetchClient();
-      const auth = new JwtSessionAuth(client, credentials, undefined, 'tok');
-      // Manually set expiresAt to the past via login
-      // We need to use the internal mechanism, so let's login with past date
+    it('should report not authenticated when token is expired', async () => {
       const pastClient = makeFetchClient({ sessionToken: 'expired-tok', expiresAt: '2020-01-01T00:00:00Z' });
       const auth2 = new JwtSessionAuth(pastClient, credentials);
-      // After login with past expiry:
-      auth2.login().then(() => {
-        expect(auth2.isAuthenticated()).toBe(false);
-        expect(auth2.getSessionToken()).toBeNull();
-      });
+      await auth2.login();
+      expect(auth2.isAuthenticated()).toBe(false);
+      expect(auth2.getSessionToken()).toBeNull();
     });
 
     it('should clear session token when expired check runs', async () => {

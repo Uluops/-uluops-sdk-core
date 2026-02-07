@@ -182,13 +182,13 @@ const validated = await client.request<z.infer<typeof schema>>('GET', '/endpoint
   schema,
 });
 
-// Raw response (without { data: T } envelope unwrapping)
-const raw = await client.requestRaw('GET', '/endpoint');
-console.log(raw.status, raw.headers, raw.data);
+// Raw response (without { data: T } envelope unwrapping, no automatic retry)
+const raw = await client.requestRaw<MyRawType>('GET', '/endpoint');
+console.log(raw); // parsed JSON without envelope unwrapping
 
-// Binary response
-const binary = await client.requestBinary('/files/report.pdf');
-console.log(binary.buffer, binary.contentType);
+// Binary response (no automatic retry — see requestBinary docs)
+const binary = await client.requestBinary('GET', '/files/report.pdf');
+console.log(binary.data, binary.contentType);
 ```
 
 #### Rate Limit Info
@@ -198,7 +198,7 @@ console.log(binary.buffer, binary.contentType);
 const info = client.getRateLimitInfo();
 if (info) {
   console.log(`${info.remaining}/${info.limit} requests remaining`);
-  console.log(`Resets at: ${info.resetAt}`);
+  console.log(`Resets at: ${info.reset}`);
 }
 ```
 
@@ -481,7 +481,7 @@ const headers = new Headers({
 });
 
 const info: RateLimitInfo | undefined = parseRateLimitHeaders(headers);
-// { limit: 100, remaining: 42, resetAt: Date }
+// { limit: 100, remaining: 42, reset: Date }
 ```
 
 ## Package Exports
