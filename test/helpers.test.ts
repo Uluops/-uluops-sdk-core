@@ -270,6 +270,18 @@ describe('parseRateLimitHeaders()', () => {
     expect(parseRateLimitHeaders(headers)).toBeNull();
   });
 
+  it('should handle zero values correctly', () => {
+    const headers = makeHeaders({
+      'x-ratelimit-limit': '0',
+      'x-ratelimit-remaining': '0',
+      'x-ratelimit-reset': '0',
+    });
+    const info = parseRateLimitHeaders(headers);
+    expect(info).not.toBeNull();
+    expect(info!.limit).toBe(0);
+    expect(info!.remaining).toBe(0);
+  });
+
   it('should handle non-numeric retry-after gracefully', () => {
     const headers = makeHeaders({
       'x-ratelimit-limit': '100',

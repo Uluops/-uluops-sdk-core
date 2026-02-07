@@ -48,6 +48,11 @@ describe('ApiKeyAuth', () => {
       expect(() => new ApiKeyAuth('ulr_invalid!chars@#$%^&*')).toThrow('invalid characters');
     });
 
+    it('should reject key that is only the prefix', () => {
+      expect(() => new ApiKeyAuth('ulr_')).toThrow(ValidationError);
+      expect(() => new ApiKeyAuth('ulr_')).toThrow('too short');
+    });
+
     it('should accept valid key', () => {
       const auth = new ApiKeyAuth(TEST_API_KEY);
       expect(auth).toBeInstanceOf(ApiKeyAuth);

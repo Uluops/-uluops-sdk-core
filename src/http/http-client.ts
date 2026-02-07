@@ -333,7 +333,8 @@ export class HttpClient {
         if (response.status === 401 && !this.authStrategy) {
           throw new UnauthorizedError(
             'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
-            'pass apiKey to the constructor, or provide sessionToken.'
+            'pass apiKey to the constructor, or provide sessionToken. ' +
+            'See: https://github.com/Uluops/-uluops-sdk-core#authentication'
           );
         }
         const errorData = await response.json().catch(() => ({}));
@@ -541,12 +542,21 @@ export class HttpClient {
   ): SdkApiError {
     const apiError = extractErrorBody(data);
     const requestId = headers.get('x-request-id') ?? undefined;
-
-    // Parse retry-after for rate limit and service unavailable errors
     const retryAfter = headers.get('retry-after');
-    const details: Record<string, unknown> = {};
+
+    // Fast path: no details and no retry-after to process
+    if (!apiError?.details && !retryAfter) {
+      return createErrorFromStatus(
+        status,
+        apiError?.message ?? `HTTP ${status}`,
+        apiError?.code,
+        undefined,
+        requestId
+      );
+    }
 
     // Copy details, stripping keys that could contain server internals
+    const details: Record<string, unknown> = {};
     if (apiError?.details) {
       for (const [key, value] of Object.entries(apiError.details)) {
         if (!REDACTED_DETAIL_KEYS.has(key)) {
@@ -587,7 +597,8 @@ export class HttpClient {
       if (!this.authStrategy) {
         return new UnauthorizedError(
           'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
-          `pass apiKey to the constructor, or provide sessionToken. (Network error: ${error.message})`
+          'pass apiKey to the constructor, or provide sessionToken. ' +
+          `See: https://github.com/Uluops/-uluops-sdk-core#authentication (Network error: ${error.message})`
         );
       }
       return new NetworkError(error.message, this.baseUrl);
@@ -611,20 +622,25 @@ export class HttpClient {
   }
 
   /**
+   * Normalize a base URL and endpoint into a full URL
+   */
+  private static joinUrl(base: string, endpoint: string): string {
+    const normalizedBase = base.replace(/\/$/, '');
+    const normalizedPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${normalizedBase}${normalizedPath}`;
+  }
+
+  /**
    * Build full URL by concatenating baseUrl and endpoint
    */
   private buildUrl(endpoint: string): string {
-    const base = this.baseUrl.replace(/\/$/, '');
-    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    return `${base}${path}`;
+    return HttpClient.joinUrl(this.baseUrl, endpoint);
   }
 
   /**
    * Build full URL using authBaseUrl (for login/refresh)
    */
   private buildAuthUrl(endpoint: string): string {
-    const base = this.authBaseUrl.replace(/\/$/, '');
-    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    return `${base}${path}`;
+    return HttpClient.joinUrl(this.authBaseUrl, endpoint);
   }
 }

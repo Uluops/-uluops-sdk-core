@@ -3,12 +3,19 @@
  */
 
 /**
- * Simple debug logger interface
+ * Simple debug logger interface.
+ *
+ * All methods accept a message string and optional extra arguments.
+ * When debug mode is disabled, all methods are no-ops.
  */
 export interface Logger {
+  /** Log a debug-level message (visible only in debug mode) */
   debug(message: string, ...args: unknown[]): void;
+  /** Log an informational message */
   info(message: string, ...args: unknown[]): void;
+  /** Log a warning */
   warn(message: string, ...args: unknown[]): void;
+  /** Log an error */
   error(message: string, ...args: unknown[]): void;
 }
 

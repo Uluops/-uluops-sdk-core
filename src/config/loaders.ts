@@ -14,37 +14,66 @@ import { ValidationError } from '../errors/errors.js';
 import { createLogger } from '../utils/logger.js';
 
 /**
- * Credentials for authentication
+ * Credentials for authentication.
+ * Exactly one authentication method should be populated.
  */
 export interface Credentials {
+  /** API key (e.g. `ulr_...`). Takes highest priority. */
   apiKey?: string;
+  /** Email for session-based auth (requires `password`). */
   email?: string;
+  /** Password for session-based auth (requires `email`). */
   password?: string;
+  /** Pre-existing session token from a prior login. */
   sessionToken?: string;
 }
 
 /**
- * Full SDK configuration
+ * Full SDK configuration returned by {@link loadConfig}.
  */
 export interface SdkConfig {
+  /** Base URL for API requests */
   baseUrl: string;
+  /** Separate base URL for auth endpoints (registry delegates to ops API) */
   authBaseUrl?: string;
+  /** Resolved credentials from the priority chain */
   credentials: Credentials;
+  /** Whether debug logging is enabled */
   debug: boolean;
+  /** Request timeout in ms */
   timeout?: number;
+  /** Max retry attempts for transient errors */
   retries?: number;
 }
 
 /**
- * Environment variable name mapping — each SDK provides its own
+ * Environment variable name mapping — each SDK provides its own.
+ *
+ * @example
+ * ```ts
+ * const OPS_ENV_VARS: EnvVarConfig = {
+ *   apiKey: 'ULUOPS_API_KEY',
+ *   email: 'ULUOPS_EMAIL',
+ *   password: 'ULUOPS_PASSWORD',
+ *   baseUrl: 'ULUOPS_BASE_URL',
+ *   debug: 'ULUOPS_DEBUG',
+ * };
+ * ```
  */
 export interface EnvVarConfig {
+  /** Env var name for the API key (e.g. `'ULUOPS_API_KEY'`) */
   apiKey: string;
+  /** Env var name for the email */
   email: string;
+  /** Env var name for the password */
   password: string;
+  /** Env var name for a pre-existing session token */
   sessionToken?: string;
+  /** Env var name for the base URL */
   baseUrl: string;
+  /** Env var name for the auth base URL (registry-sdk only) */
   authBaseUrl?: string;
+  /** Env var name for the debug flag */
   debug: string;
 }
 
@@ -106,7 +135,11 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
 
   try {
     const content = readFileSync(credPath, 'utf-8');
-    const stored = JSON.parse(content) as StoredCredentials;
+    const parsed: unknown = JSON.parse(content);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+    const stored = parsed as StoredCredentials;
     const profileCreds = stored[profile];
 
     if (!profileCreds) {

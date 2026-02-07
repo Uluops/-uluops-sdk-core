@@ -10,7 +10,10 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Retry a function with exponential backoff
+ * Retry a function with exponential backoff.
+ *
+ * @typeParam T - The return type of the function being retried.
+ *   Must be inferrable from `fn` — callers should not need to specify it explicitly.
  */
 export async function retry<T>(
   fn: () => Promise<T>,
@@ -137,8 +140,9 @@ export function toQuery(query: object | undefined): QueryParams | undefined {
   if (!query) return undefined;
   const params: QueryParams = {};
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) {
-      params[key] = value as QueryParamValue;
+    if (value === undefined) continue;
+    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      params[key] = value;
     }
   }
   return params;

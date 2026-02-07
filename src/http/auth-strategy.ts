@@ -12,13 +12,22 @@ import { API_KEY_PREFIX } from '../config/constants.js';
 import { ValidationError, UnauthorizedError } from '../errors/errors.js';
 
 /**
- * Authentication strategy interface
+ * Authentication strategy interface.
+ *
+ * Implementations handle credential storage and header generation.
+ * Use {@link createAuthStrategy} to instantiate the correct strategy
+ * from an {@link AuthConfig}.
  */
 export interface AuthStrategy {
+  /** Return the `Authorization` header value (e.g. `"Bearer <token>"`) */
   getAuthorizationHeader(): string;
+  /** Whether the strategy supports token refresh (true for session auth) */
   canRefresh(): boolean;
+  /** Refresh the credential (re-login). Throws if not refreshable. */
   refresh(): Promise<void>;
+  /** Whether the strategy currently holds a valid credential */
   isAuthenticated(): boolean;
+  /** Discriminator for the credential type */
   getType(): 'api_key' | 'session';
 }
 

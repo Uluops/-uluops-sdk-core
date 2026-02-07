@@ -460,6 +460,10 @@ describe('isApiKey()', () => {
     expect(isApiKey('ulr')).toBe(false);
     expect(isApiKey('ul')).toBe(false);
   });
+
+  it('should return true for exact prefix only (ulr_)', () => {
+    expect(isApiKey('ulr_')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

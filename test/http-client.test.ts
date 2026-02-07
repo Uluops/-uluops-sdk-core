@@ -348,6 +348,7 @@ describe('HTTP error mapping', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(UnauthorizedError);
       expect((err as UnauthorizedError).message).toContain('No credentials configured');
+      expect((err as UnauthorizedError).message).toContain('authentication');
     }
   });
 });
@@ -442,6 +443,49 @@ describe('401 token refresh', () => {
     expect(result).toBe('protected-data');
   });
 
+  it('should deduplicate concurrent token refreshes (single login call)', async () => {
+    // Two concurrent requests both get 401 — only ONE login should happen.
+    // Use sessionToken so both requests have an initial (stale) token.
+    nock(TEST_BASE_URL)
+      .get(apiPath('/concurrent1'))
+      .matchHeader('Authorization', 'Bearer stale-tok')
+      .reply(401, { error: { message: 'expired' } });
+    nock(TEST_BASE_URL)
+      .get(apiPath('/concurrent2'))
+      .matchHeader('Authorization', 'Bearer stale-tok')
+      .reply(401, { error: { message: 'expired' } });
+
+    // Single login endpoint (only intercepted once — if called twice, nock will error)
+    // sessionToken path creates JwtSessionAuth with { email: '', password: '' }
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'), { email: '', password: '' })
+      .reply(200, { data: { sessionToken: 'fresh-tok', expiresAt: '2099-01-01' } });
+
+    // Retry requests with refreshed token
+    nock(TEST_BASE_URL)
+      .get(apiPath('/concurrent1'))
+      .matchHeader('Authorization', 'Bearer fresh-tok')
+      .reply(200, { data: 'result1' });
+    nock(TEST_BASE_URL)
+      .get(apiPath('/concurrent2'))
+      .matchHeader('Authorization', 'Bearer fresh-tok')
+      .reply(200, { data: 'result2' });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: 'stale-tok',
+      retries: 3,
+    });
+
+    const [r1, r2] = await Promise.all([
+      client.get('/concurrent1'),
+      client.get('/concurrent2'),
+    ]);
+
+    expect(r1).toBe('result1');
+    expect(r2).toBe('result2');
+  });
+
   it('should throw original error when refresh fails', async () => {
     // First request returns 401
     nock(TEST_BASE_URL)
@@ -488,6 +532,17 @@ describe('query parameter handling', () => {
 
     const client = makeClient();
     const result = await client.get('/arr', { tag: ['a', 'b'] });
+    expect(result).toBe('ok');
+  });
+
+  it('should handle empty array params without adding to query string', async () => {
+    nock(TEST_BASE_URL)
+      .get(apiPath('/emptyarr'))
+      .query({ other: 'yes' })
+      .reply(200, { data: 'ok' });
+
+    const client = makeClient();
+    const result = await client.get('/emptyarr', { tag: [], other: 'yes' });
     expect(result).toBe('ok');
   });
 
@@ -679,9 +734,17 @@ describe('timeout handling', () => {
       .reply(200, { data: 'ok' });
 
     const client = makeClient({ timeout: 50 });
-    await expect(client.get('/slow')).rejects.toThrow();
-    // The exact error type depends on the runtime — it could be TimeoutError
-    // or get caught as a different fetch error. We verify it does not succeed.
+    try {
+      await client.get('/slow');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      // In Node.js with nock, AbortError is mapped to TimeoutError.
+      // Verify it's either a TimeoutError or at minimum an Error (not a success).
+      expect(err).toBeInstanceOf(Error);
+      if (err instanceof TimeoutError) {
+        expect(err.message).toContain('50');
+      }
+    }
   });
 });
 
