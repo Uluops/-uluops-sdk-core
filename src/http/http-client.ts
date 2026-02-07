@@ -175,6 +175,13 @@ export class HttpClient {
    * By default, only GET requests are retried on transient errors.
    * Set `retryMutations: true` in options to also retry POST/PUT/DELETE
    * (only use this for idempotent endpoints).
+   *
+   * @remarks
+   * The generic parameter `T` is asserted at the JSON boundary, not validated
+   * at runtime. This matches the convention used by axios, ky, and got. If you
+   * need runtime guarantees that the response matches `T`, pass a Zod schema
+   * via `options.schema` — the response will be parsed and any mismatch throws
+   * a ZodError before the value reaches your code.
    */
   async request<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -202,38 +209,15 @@ export class HttpClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        const shouldRetry =
-          canRetry &&
-          lastError instanceof SdkApiError &&
-          lastError.isRetryable() &&
-          attempt < maxAttempts;
-
-        if (shouldRetry) {
+        if (this.shouldRetryTransient(lastError, canRetry, attempt, maxAttempts)) {
           const delay = this.calculateBackoff(attempt);
           this.logger.debug(`Attempt ${attempt}/${maxAttempts} failed, retrying after ${delay}ms`);
           await sleep(delay);
           continue;
         }
 
-        // Handle 401 with token refresh (only on first attempt to prevent loops)
-        const isFirstAttempt = attempt === 1;
-        if (
-          lastError instanceof UnauthorizedError &&
-          this.authStrategy?.canRefresh() &&
-          isFirstAttempt
-        ) {
-          try {
-            this.logger.debug('Token expired, attempting refresh...');
-            if (!this.refreshPromise) {
-              this.refreshPromise = this.authStrategy.refresh().finally(() => {
-                this.refreshPromise = null;
-              });
-            }
-            await this.refreshPromise;
-            continue;
-          } catch (refreshError) {
-            this.logger.debug(`Token refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
-          }
+        if (await this.attemptTokenRefresh(lastError, attempt)) {
+          continue;
         }
 
         throw lastError;
@@ -241,6 +225,49 @@ export class HttpClient {
     }
 
     throw lastError ?? new Error('Request failed');
+  }
+
+  /**
+   * Determine whether a transient error should be retried
+   */
+  private shouldRetryTransient(
+    error: Error,
+    canRetry: boolean,
+    attempt: number,
+    maxAttempts: number
+  ): boolean {
+    return (
+      canRetry &&
+      error instanceof SdkApiError &&
+      error.isRetryable() &&
+      attempt < maxAttempts
+    );
+  }
+
+  /**
+   * Attempt a token refresh on 401 errors (first attempt only, deduplicated).
+   * Returns true if refresh succeeded and the request should be retried.
+   */
+  private async attemptTokenRefresh(error: Error, attempt: number): Promise<boolean> {
+    if (attempt !== 1) return false;
+    if (!(error instanceof UnauthorizedError)) return false;
+    if (!this.authStrategy?.canRefresh()) return false;
+
+    try {
+      this.logger.debug('Token expired, attempting refresh...');
+      if (!this.refreshPromise) {
+        this.refreshPromise = this.authStrategy.refresh().finally(() => {
+          this.refreshPromise = null;
+        });
+      }
+      await this.refreshPromise;
+      return true;
+    } catch (refreshError) {
+      this.logger.debug(
+        `Token refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`
+      );
+      return false;
+    }
   }
 
   /**
