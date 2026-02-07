@@ -169,9 +169,14 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
       sessionToken: profileCreds.sessionToken,
       email: profileCreds.email,
     };
-  } catch {
-    // Silently fall through — invalid or unreadable credentials file
-    // is not an error condition; the priority chain will try other sources.
+  } catch (error) {
+    // Credentials file exists but can't be parsed — warn the user so they know
+    // their config is corrupt, then fall through to other credential sources.
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[sdk-core] Warning: could not read credentials from ${credPath}: ${reason}. ` +
+      'Falling back to environment variables.'
+    );
     return null;
   }
 }

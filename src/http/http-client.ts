@@ -217,12 +217,16 @@ export class HttpClient {
         lastError = error instanceof Error ? error : new Error(String(error), { cause: error });
 
         if (this.shouldRetryTransient(lastError, canRetry, attempt, maxAttempts)) {
-          const delay = this.calculateBackoff(attempt);
+          const delay = this.calculateBackoffWithRetryAfter(lastError, attempt);
           this.logger.debug(`Attempt ${attempt}/${maxAttempts} failed, retrying after ${delay}ms`);
           await sleep(delay);
           continue;
         }
 
+        // Token refresh retry: a 401 means the server rejected the request
+        // *before processing it* (stale auth). Retrying after refresh is safe
+        // for all methods including mutations, so we intentionally skip the
+        // retryMutations check here.
         if (!refreshAttempted && await this.attemptTokenRefresh(lastError)) {
           refreshAttempted = true;
           continue;
@@ -324,6 +328,9 @@ export class HttpClient {
         }`
       );
     }
+    // SAFETY: `as T` — the generic is asserted at the JSON boundary, not validated
+    // at runtime. This matches the convention used by axios/ky/got. Use `options.schema`
+    // (Zod) for runtime type guarantees.
     return responseData.data as T;
   }
 
@@ -374,11 +381,13 @@ export class HttpClient {
       }
 
       if (response.status === 204) {
+        // SAFETY: `as T` — 204 No Content has no body; callers should type as `request<void>(...)`
         return undefined as T;
       }
 
       const text = await response.text();
       if (!text) {
+        // SAFETY: `as T` — empty body equivalent to 204; see above
         return undefined as T;
       }
 
@@ -627,6 +636,22 @@ export class HttpClient {
     }
 
     return new Error(String(error));
+  }
+
+  /**
+   * Calculate backoff delay, preferring the server's retry-after header
+   * when available. Falls back to exponential backoff with jitter.
+   */
+  private calculateBackoffWithRetryAfter(error: Error, attempt: number): number {
+    // Prefer server-specified retry-after (in seconds) from 429/503 responses
+    if (error instanceof SdkApiError) {
+      const retryAfter = (error as SdkApiError & { retryAfter?: number }).retryAfter;
+      if (typeof retryAfter === 'number' && retryAfter > 0) {
+        // Cap at MAX_BACKOFF_MS to prevent absurd waits
+        return Math.min(retryAfter * 1000, MAX_BACKOFF_MS);
+      }
+    }
+    return this.calculateBackoff(attempt);
   }
 
   /**

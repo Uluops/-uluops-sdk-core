@@ -191,20 +191,28 @@ describe('loadStoredCredentials()', () => {
     expect(result!.sessionToken).toBe('no-expiry-tok');
   });
 
-  it('should return null and not throw on JSON parse error', () => {
+  it('should return null and warn on JSON parse error', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue('invalid json');
 
     expect(loadStoredCredentials()).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain('could not read credentials');
+    warnSpy.mockRestore();
   });
 
-  it('should return null and not throw on read error', () => {
+  it('should return null and warn on read error', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockImplementation(() => {
       throw new Error('EACCES');
     });
 
     expect(loadStoredCredentials()).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain('EACCES');
+    warnSpy.mockRestore();
   });
 });
 

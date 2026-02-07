@@ -13,16 +13,54 @@ import {
 // ---------------------------------------------------------------------------
 describe('createLogger()', () => {
   describe('when disabled', () => {
-    it('should return a logger with noop methods', () => {
-      const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    it('should suppress debug and info', () => {
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
       const logger = createLogger('[test]', false);
 
       logger.debug('should not appear');
       logger.info('should not appear');
-      logger.warn('should not appear');
-      logger.error('should not appear');
 
-      expect(spy).not.toHaveBeenCalled();
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalled();
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
+    });
+
+    it('should still emit warn even when disabled', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const logger = createLogger('[test]', false);
+
+      logger.warn('important warning');
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const firstArg = spy.mock.calls[0][0] as string;
+      expect(firstArg).toContain('[test]');
+      expect(firstArg).toContain('WARN:');
+      spy.mockRestore();
+    });
+
+    it('should still emit error even when disabled', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const logger = createLogger('[test]', false);
+
+      logger.error('critical error');
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const firstArg = spy.mock.calls[0][0] as string;
+      expect(firstArg).toContain('[test]');
+      expect(firstArg).toContain('ERROR:');
+      spy.mockRestore();
+    });
+
+    it('should sanitize args in warn/error even when disabled', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const logger = createLogger('[test]', false);
+
+      logger.warn('data', { apiKey: 'secret', safe: 'visible' });
+
+      const extraArg = spy.mock.calls[0][2];
+      expect(extraArg).toEqual({ apiKey: '[REDACTED]', safe: 'visible' });
       spy.mockRestore();
     });
   });

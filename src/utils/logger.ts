@@ -85,11 +85,19 @@ export function createLogger(prefix: string, enabled: boolean): Logger {
   const noop = () => {};
 
   if (!enabled) {
+    // Even when debug logging is disabled, error and warn should still
+    // emit — these represent real problems that callers need to see.
+    const timestamp = () => new Date().toISOString();
+    const sanitizeArgs = (args: unknown[]): unknown[] => args.map(sanitizeForLog);
     return {
       debug: noop,
       info: noop,
-      warn: noop,
-      error: noop,
+      warn(message: string, ...args: unknown[]): void {
+        console.warn(`${timestamp()} ${prefix} WARN:`, message, ...sanitizeArgs(args));
+      },
+      error(message: string, ...args: unknown[]): void {
+        console.error(`${timestamp()} ${prefix} ERROR:`, message, ...sanitizeArgs(args));
+      },
     };
   }
 
