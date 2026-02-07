@@ -118,11 +118,18 @@ describe('HttpClient.get()', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should throw on non-envelope JSON response', async () => {
+  it('should throw SdkApiError on non-envelope JSON response', async () => {
     nock(TEST_BASE_URL).get(apiPath('/bad')).reply(200, { result: 'not wrapped' });
 
     const client = makeClient();
-    await expect(client.get('/bad')).rejects.toThrow('Unexpected API response format');
+    try {
+      await client.get('/bad');
+      expect.fail('Should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(SdkApiError);
+      expect((error as SdkApiError).message).toContain('Unexpected API response format');
+      expect((error as SdkApiError).statusCode).toBe(200);
+    }
   });
 
   it('should throw SdkApiError on invalid JSON body', async () => {
@@ -410,10 +417,8 @@ describe('retry logic', () => {
 // ---------------------------------------------------------------------------
 describe('401 token refresh', () => {
   it('should refresh token on 401 and retry with new token', async () => {
-    // Use sessionToken so the first request actually sends an Authorization header.
-    // The server responds 401 (expired token), triggering refresh (re-login).
-    // Note: createAuthStrategy with sessionToken creates JwtSessionAuth with
-    // empty email/password credentials, so the login POST sends those.
+    // Use sessionToken + email/password so JwtSessionAuth has an initial
+    // token for the first request AND can refresh via login() on 401.
 
     // First request with stale token returns 401
     nock(TEST_BASE_URL)
@@ -421,10 +426,9 @@ describe('401 token refresh', () => {
       .matchHeader('Authorization', 'Bearer stale-tok')
       .reply(401, { error: { message: 'expired' } });
 
-    // Auth login endpoint — refresh calls login() which POSTs to authBaseUrl + /auth/login
-    // JwtSessionAuth created from sessionToken path has { email: '', password: '' }
+    // Auth login endpoint — refresh calls login()
     nock(TEST_BASE_URL)
-      .post(apiPath('/auth/login'), { email: '', password: '' })
+      .post(apiPath('/auth/login'), { email: 'a@b.com', password: 'pw' })
       .reply(200, { data: { sessionToken: 'refreshed-tok', expiresAt: '2099-01-01' } });
 
     // Retry with refreshed token succeeds
@@ -436,6 +440,8 @@ describe('401 token refresh', () => {
     const client = makeClient({
       apiKey: undefined,
       sessionToken: 'stale-tok',
+      email: 'a@b.com',
+      password: 'pw',
       retries: 3,
     });
 
@@ -445,7 +451,6 @@ describe('401 token refresh', () => {
 
   it('should deduplicate concurrent token refreshes (single login call)', async () => {
     // Two concurrent requests both get 401 — only ONE login should happen.
-    // Use sessionToken so both requests have an initial (stale) token.
     nock(TEST_BASE_URL)
       .get(apiPath('/concurrent1'))
       .matchHeader('Authorization', 'Bearer stale-tok')
@@ -456,9 +461,8 @@ describe('401 token refresh', () => {
       .reply(401, { error: { message: 'expired' } });
 
     // Single login endpoint (only intercepted once — if called twice, nock will error)
-    // sessionToken path creates JwtSessionAuth with { email: '', password: '' }
     nock(TEST_BASE_URL)
-      .post(apiPath('/auth/login'), { email: '', password: '' })
+      .post(apiPath('/auth/login'), { email: 'a@b.com', password: 'pw' })
       .reply(200, { data: { sessionToken: 'fresh-tok', expiresAt: '2099-01-01' } });
 
     // Retry requests with refreshed token
@@ -474,6 +478,8 @@ describe('401 token refresh', () => {
     const client = makeClient({
       apiKey: undefined,
       sessionToken: 'stale-tok',
+      email: 'a@b.com',
+      password: 'pw',
       retries: 3,
     });
 
@@ -499,7 +505,7 @@ describe('401 token refresh', () => {
 
     // Token refresh succeeds
     nock(TEST_BASE_URL)
-      .post(apiPath('/auth/login'), { email: '', password: '' })
+      .post(apiPath('/auth/login'), { email: 'a@b.com', password: 'pw' })
       .reply(200, { data: { sessionToken: 'new-tok', expiresAt: '2099-01-01' } });
 
     // Attempt 3: retried with fresh token
@@ -511,11 +517,28 @@ describe('401 token refresh', () => {
     const client = makeClient({
       apiKey: undefined,
       sessionToken: 'stale-tok',
+      email: 'a@b.com',
+      password: 'pw',
       retries: 4,
     });
 
     const result = await client.get('/late401');
     expect(result).toBe('recovered');
+  });
+
+  it('should NOT attempt refresh when session has no login credentials', async () => {
+    // sessionToken-only auth cannot refresh — should throw immediately
+    nock(TEST_BASE_URL)
+      .get(apiPath('/norefresh'))
+      .reply(401, { error: { message: 'expired' } });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: 'stale-tok',
+      retries: 1,
+    });
+
+    await expect(client.get('/norefresh')).rejects.toThrow(UnauthorizedError);
   });
 
   it('should throw original error when refresh fails', async () => {

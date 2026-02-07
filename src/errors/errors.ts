@@ -58,8 +58,8 @@ export class SdkApiError extends Error {
  * 400 Bad Request - Validation errors
  */
 export class ValidationError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(HTTP_STATUS.BAD_REQUEST, message, ERROR_CODES.VALIDATION_ERROR, details);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
+    super(HTTP_STATUS.BAD_REQUEST, message, ERROR_CODES.VALIDATION_ERROR, details, requestId);
     this.name = 'ValidationError';
   }
 }
@@ -68,8 +68,8 @@ export class ValidationError extends SdkApiError {
  * 401 Unauthorized - Authentication required
  */
 export class UnauthorizedError extends SdkApiError {
-  constructor(message = 'Authentication required') {
-    super(HTTP_STATUS.UNAUTHORIZED, message, ERROR_CODES.UNAUTHORIZED);
+  constructor(message = 'Authentication required', requestId?: string) {
+    super(HTTP_STATUS.UNAUTHORIZED, message, ERROR_CODES.UNAUTHORIZED, undefined, requestId);
     this.name = 'UnauthorizedError';
   }
 }
@@ -78,8 +78,8 @@ export class UnauthorizedError extends SdkApiError {
  * 403 Forbidden - Access denied
  */
 export class ForbiddenError extends SdkApiError {
-  constructor(message = 'Access denied') {
-    super(HTTP_STATUS.FORBIDDEN, message, ERROR_CODES.FORBIDDEN);
+  constructor(message = 'Access denied', requestId?: string) {
+    super(HTTP_STATUS.FORBIDDEN, message, ERROR_CODES.FORBIDDEN, undefined, requestId);
     this.name = 'ForbiddenError';
   }
 }
@@ -88,7 +88,7 @@ export class ForbiddenError extends SdkApiError {
  * 404 Not Found - Resource not found
  */
 export class NotFoundError extends SdkApiError {
-  constructor(resource: string, identifier?: string) {
+  constructor(resource: string, identifier?: string, requestId?: string) {
     const message = identifier
       ? `${resource} '${identifier}' not found`
       : `${resource} not found`;
@@ -96,7 +96,8 @@ export class NotFoundError extends SdkApiError {
       HTTP_STATUS.NOT_FOUND,
       message,
       ERROR_CODES.NOT_FOUND,
-      identifier ? { resource, identifier } : { resource }
+      identifier ? { resource, identifier } : { resource },
+      requestId
     );
     this.name = 'NotFoundError';
   }
@@ -106,8 +107,8 @@ export class NotFoundError extends SdkApiError {
  * 409 Conflict - Resource already exists or state conflict
  */
 export class ConflictError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(HTTP_STATUS.CONFLICT, message, ERROR_CODES.CONFLICT, details);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
+    super(HTTP_STATUS.CONFLICT, message, ERROR_CODES.CONFLICT, details, requestId);
     this.name = 'ConflictError';
   }
 }
@@ -116,8 +117,8 @@ export class ConflictError extends SdkApiError {
  * 413 Payload Too Large - Request body exceeds size limit
  */
 export class PayloadTooLargeError extends SdkApiError {
-  constructor(message = 'Request payload too large', maxSize?: number) {
-    super(HTTP_STATUS.PAYLOAD_TOO_LARGE, message, ERROR_CODES.PAYLOAD_TOO_LARGE, { maxSize });
+  constructor(message = 'Request payload too large', maxSize?: number, requestId?: string) {
+    super(HTTP_STATUS.PAYLOAD_TOO_LARGE, message, ERROR_CODES.PAYLOAD_TOO_LARGE, { maxSize }, requestId);
     this.name = 'PayloadTooLargeError';
   }
 }
@@ -126,8 +127,8 @@ export class PayloadTooLargeError extends SdkApiError {
  * 422 Unprocessable Entity - Request is valid but cannot be processed
  */
 export class UnprocessableError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(HTTP_STATUS.UNPROCESSABLE_ENTITY, message, ERROR_CODES.UNPROCESSABLE_ENTITY, details);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
+    super(HTTP_STATUS.UNPROCESSABLE_ENTITY, message, ERROR_CODES.UNPROCESSABLE_ENTITY, details, requestId);
     this.name = 'UnprocessableError';
   }
 }
@@ -138,11 +139,11 @@ export class UnprocessableError extends SdkApiError {
 export class RateLimitError extends SdkApiError {
   public readonly retryAfter?: number;
 
-  constructor(retryAfter?: number) {
-    const message = retryAfter
+  constructor(message?: string, retryAfter?: number, requestId?: string) {
+    const msg = message ?? (retryAfter
       ? `Rate limit exceeded. Retry after ${retryAfter} seconds`
-      : 'Rate limit exceeded';
-    super(HTTP_STATUS.TOO_MANY_REQUESTS, message, ERROR_CODES.RATE_LIMITED, { retryAfter });
+      : 'Rate limit exceeded');
+    super(HTTP_STATUS.TOO_MANY_REQUESTS, msg, ERROR_CODES.RATE_LIMITED, { retryAfter }, requestId);
     this.name = 'RateLimitError';
     this.retryAfter = retryAfter;
   }
@@ -154,10 +155,10 @@ export class RateLimitError extends SdkApiError {
 export class ServiceUnavailableError extends SdkApiError {
   public readonly retryAfter?: number;
 
-  constructor(message = 'Service temporarily unavailable', retryAfter?: number) {
+  constructor(message = 'Service temporarily unavailable', retryAfter?: number, requestId?: string) {
     super(HTTP_STATUS.SERVICE_UNAVAILABLE, message, ERROR_CODES.SERVICE_UNAVAILABLE, {
       retryAfter,
-    });
+    }, requestId);
     this.name = 'ServiceUnavailableError';
     this.retryAfter = retryAfter;
   }
@@ -203,30 +204,30 @@ export function createErrorFromStatus(
 ): SdkApiError {
   switch (statusCode) {
     case HTTP_STATUS.BAD_REQUEST:
-      return new ValidationError(message, details);
+      return new ValidationError(message, details, requestId);
     case HTTP_STATUS.UNAUTHORIZED:
-      return new UnauthorizedError(message);
+      return new UnauthorizedError(message, requestId);
     case HTTP_STATUS.FORBIDDEN:
-      return new ForbiddenError(message);
+      return new ForbiddenError(message, requestId);
     case HTTP_STATUS.NOT_FOUND:
-      return new NotFoundError(message);
+      return new NotFoundError(message, undefined, requestId);
     case HTTP_STATUS.CONFLICT:
-      return new ConflictError(message, details);
+      return new ConflictError(message, details, requestId);
     case HTTP_STATUS.PAYLOAD_TOO_LARGE: {
       const maxSize = typeof details?.maxSize === 'number' ? details.maxSize : undefined;
-      return new PayloadTooLargeError(message, maxSize);
+      return new PayloadTooLargeError(message, maxSize, requestId);
     }
     case HTTP_STATUS.UNPROCESSABLE_ENTITY:
-      return new UnprocessableError(message, details);
+      return new UnprocessableError(message, details, requestId);
     case HTTP_STATUS.TOO_MANY_REQUESTS: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new RateLimitError(retryAfter);
+      return new RateLimitError(message, retryAfter, requestId);
     }
     case HTTP_STATUS.SERVICE_UNAVAILABLE:
     case HTTP_STATUS.BAD_GATEWAY:
     case HTTP_STATUS.GATEWAY_TIMEOUT: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new ServiceUnavailableError(message, retryAfter);
+      return new ServiceUnavailableError(message, retryAfter, requestId);
     }
     default:
       return new SdkApiError(statusCode, message, code, details, requestId);

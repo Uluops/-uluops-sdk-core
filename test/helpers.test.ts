@@ -197,6 +197,14 @@ describe('isUuid()', () => {
     expect(isUuid('886313e1-3b8a-5372-9b90-0c9aee199e5d')).toBe(true);
   });
 
+  it('should accept UUID v6', () => {
+    expect(isUuid('1ef21d2f-1207-6130-9bfc-0242ac120002')).toBe(true);
+  });
+
+  it('should accept UUID v7', () => {
+    expect(isUuid('01932c07-209c-7e4a-9b4c-5e8b5e2e4a1f')).toBe(true);
+  });
+
   it('should accept uppercase UUIDs', () => {
     expect(isUuid('550E8400-E29B-41D4-A716-446655440000')).toBe(true);
   });
@@ -209,10 +217,10 @@ describe('isUuid()', () => {
     expect(isUuid('gggggggg-gggg-4ggg-8ggg-gggggggggggg')).toBe(false);
   });
 
-  it('should reject UUID with version 0 or 6+', () => {
-    // version digit (5th group, first char) must be 1-5
+  it('should reject UUID with version 0 or 8+', () => {
+    // version digit (5th group, first char) must be 1-7
     expect(isUuid('550e8400-e29b-01d4-a716-446655440000')).toBe(false);
-    expect(isUuid('550e8400-e29b-61d4-a716-446655440000')).toBe(false);
+    expect(isUuid('550e8400-e29b-81d4-a716-446655440000')).toBe(false);
   });
 
   it('should reject UUID with invalid variant', () => {

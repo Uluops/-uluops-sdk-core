@@ -111,6 +111,7 @@ interface LoginApiResponse {
 export class JwtSessionAuth implements AuthStrategy {
   private sessionToken: string | null;
   private expiresAt: Date | null = null;
+  private readonly hasLoginCredentials: boolean;
 
   constructor(
     private readonly httpClient: FetchClient,
@@ -119,6 +120,7 @@ export class JwtSessionAuth implements AuthStrategy {
     initialToken?: string
   ) {
     this.sessionToken = initialToken ?? null;
+    this.hasLoginCredentials = !!(credentials.email && credentials.password);
   }
 
   /**
@@ -154,7 +156,7 @@ export class JwtSessionAuth implements AuthStrategy {
   }
 
   canRefresh(): boolean {
-    return true;
+    return this.hasLoginCredentials;
   }
 
   async refresh(): Promise<void> {
@@ -209,10 +211,11 @@ export function createAuthStrategy(config: AuthConfig): AuthStrategy {
   }
 
   // Priority 2: Session token (already logged in)
+  // Pass email/password through when available so refresh can re-login
   if (config.sessionToken && config.httpClient) {
     return new JwtSessionAuth(
       config.httpClient,
-      { email: '', password: '' },
+      { email: config.email ?? '', password: config.password ?? '' },
       config.onTokenRefresh,
       config.sessionToken
     );

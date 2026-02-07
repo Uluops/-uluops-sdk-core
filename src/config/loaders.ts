@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { config as loadDotenv } from 'dotenv';
 import { CONFIG_PATHS, API_KEY_PREFIX } from './constants.js';
 import { ValidationError } from '../errors/errors.js';
-import { createLogger } from '../utils/logger.js';
+
 
 /**
  * Credentials for authentication.
@@ -169,13 +169,9 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
       sessionToken: profileCreds.sessionToken,
       email: profileCreds.email,
     };
-  } catch (error) {
-    const logger = createLogger('[sdk-core:config]', false);
-    if (error instanceof SyntaxError) {
-      logger.debug(`Invalid JSON in credentials file ${credPath}:`, error.message);
-    } else {
-      logger.debug('Failed to read credentials file:', error instanceof Error ? error.message : String(error));
-    }
+  } catch {
+    // Silently fall through — invalid or unreadable credentials file
+    // is not an error condition; the priority chain will try other sources.
     return null;
   }
 }

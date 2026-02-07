@@ -317,7 +317,8 @@ export class HttpClient {
     }
 
     if (!isDataEnvelope(responseData)) {
-      throw new Error(
+      throw new SdkApiError(
+        status,
         `Unexpected API response format: expected { data: ... } wrapper but received ${
           responseData === null ? 'null' : typeof responseData
         }`
@@ -393,6 +394,64 @@ export class HttpClient {
   }
 
   /**
+   * Low-level fetch primitive shared by requestRaw and requestBinary.
+   * Handles URL building, auth headers, timeout, and error mapping.
+   */
+  private async executeFetch(
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    endpoint: string,
+    options?: {
+      params?: object;
+      headers?: Record<string, string>;
+      body?: string;
+      removeContentType?: boolean;
+    }
+  ): Promise<Response> {
+    const url = new URL(this.buildUrl(endpoint));
+    if (options?.params) {
+      for (const [key, value] of Object.entries(options.params)) {
+        if (value !== undefined && value !== null) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+    if (options?.removeContentType) {
+      delete headers['Content-Type'];
+    }
+    if (this.authStrategy) {
+      headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url.toString(), {
+        method,
+        headers,
+        body: options?.body,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw this.createHttpError(response.status, errorData, response.headers);
+      }
+
+      return response;
+    } catch (error) {
+      throw this.handleFetchError(error);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
    * Make a request that returns the full response (for non-standard responses).
    *
    * **Note:** This method does not include automatic retry, token refresh on 401,
@@ -404,63 +463,31 @@ export class HttpClient {
     data?: object,
     options?: { params?: object; headers?: Record<string, string>; schema?: ZodType<T> }
   ): Promise<T> {
-    const url = new URL(this.buildUrl(endpoint));
-    const queryParams = method === 'GET' ? data : options?.params;
-    if (queryParams) {
-      for (const [key, value] of Object.entries(queryParams)) {
-        if (value !== undefined && value !== null) {
-          url.searchParams.set(key, String(value));
-        }
-      }
-    }
-
-    const headers: Record<string, string> = {
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-    if (this.authStrategy) {
-      headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
-    }
-
+    const params = method === 'GET' ? data : options?.params;
     const body = method !== 'GET' ? JSON.stringify(data) : undefined;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const response = await this.executeFetch(method, endpoint, {
+      params: params as object,
+      headers: options?.headers,
+      body,
+    });
 
-    try {
-      const response = await fetch(url.toString(), {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw this.createHttpError(response.status, errorData, response.headers);
-      }
-
-      const text = await response.text();
-      if (!text) {
-        return undefined as T;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        throw new SdkApiError(response.status, 'Invalid JSON response');
-      }
-
-      if (options?.schema) {
-        return options.schema.parse(parsed);
-      }
-      return parsed as T;
-    } catch (error) {
-      throw this.handleFetchError(error);
-    } finally {
-      clearTimeout(timeoutId);
+    const text = await response.text();
+    if (!text) {
+      return undefined as T;
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new SdkApiError(response.status, 'Invalid JSON response');
+    }
+
+    if (options?.schema) {
+      return options.schema.parse(parsed);
+    }
+    return parsed as T;
   }
 
   /**
@@ -474,48 +501,15 @@ export class HttpClient {
     endpoint: string,
     options?: { params?: object; headers?: Record<string, string> }
   ): Promise<{ data: ArrayBuffer; contentType: string; headers: Headers }> {
-    const url = new URL(this.buildUrl(endpoint));
-    const queryParams = options?.params;
-    if (queryParams) {
-      for (const [key, value] of Object.entries(queryParams)) {
-        if (value !== undefined && value !== null) {
-          url.searchParams.set(key, String(value));
-        }
-      }
-    }
+    const response = await this.executeFetch(method, endpoint, {
+      params: options?.params as object,
+      headers: options?.headers,
+      removeContentType: true,
+    });
 
-    const headers: Record<string, string> = {
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-    delete headers['Content-Type'];
-    if (this.authStrategy) {
-      headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const response = await fetch(url.toString(), {
-        method,
-        headers,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw this.createHttpError(response.status, errorData, response.headers);
-      }
-
-      const responseData = await response.arrayBuffer();
-      const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
-      return { data: responseData, contentType, headers: response.headers };
-    } catch (error) {
-      throw this.handleFetchError(error);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const responseData = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
+    return { data: responseData, contentType, headers: response.headers };
   }
 
   async get<T>(endpoint: string, params?: object, options?: { schema?: ZodType<T> }): Promise<T> {

@@ -262,6 +262,14 @@ describe('createAuthStrategy()', () => {
     expect(strategy.getAuthorizationHeader()).toBe('Bearer my-session');
   });
 
+  it('should not be refreshable when created with sessionToken only (no email/password)', () => {
+    const strategy = createAuthStrategy({
+      sessionToken: 'my-session',
+      httpClient,
+    });
+    expect(strategy.canRefresh()).toBe(false);
+  });
+
   it('should use email/password when no apiKey or sessionToken', () => {
     const strategy = createAuthStrategy({
       email: 'a@b.com',

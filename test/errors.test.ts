@@ -158,7 +158,7 @@ describe('UnprocessableError', () => {
 
 describe('RateLimitError', () => {
   it('should include retryAfter in message when provided', () => {
-    const err = new RateLimitError(60);
+    const err = new RateLimitError(undefined, 60);
     expect(err.statusCode).toBe(HTTP_STATUS.TOO_MANY_REQUESTS);
     expect(err.code).toBe(ERROR_CODES.RATE_LIMITED);
     expect(err.name).toBe('RateLimitError');
@@ -171,6 +171,12 @@ describe('RateLimitError', () => {
     const err = new RateLimitError();
     expect(err.retryAfter).toBeUndefined();
     expect(err.message).toBe('Rate limit exceeded');
+  });
+
+  it('should accept custom message', () => {
+    const err = new RateLimitError('Per-project rate limit exceeded', 30);
+    expect(err.message).toBe('Per-project rate limit exceeded');
+    expect(err.retryAfter).toBe(30);
   });
 });
 
@@ -357,6 +363,29 @@ describe('createErrorFromStatus()', () => {
     expect(err).toBeInstanceOf(RateLimitError);
     expect((err as RateLimitError).retryAfter).toBeUndefined();
   });
+
+  it('should preserve server message for 429 RateLimitError', () => {
+    const err = createErrorFromStatus(429, 'Per-project limit exceeded', undefined, { retryAfter: 10 });
+    expect(err).toBeInstanceOf(RateLimitError);
+    expect(err.message).toBe('Per-project limit exceeded');
+    expect((err as RateLimitError).retryAfter).toBe(10);
+  });
+
+  it.each([
+    [400, ValidationError],
+    [401, UnauthorizedError],
+    [403, ForbiddenError],
+    [404, NotFoundError],
+    [409, ConflictError],
+    [413, PayloadTooLargeError],
+    [422, UnprocessableError],
+    [429, RateLimitError],
+    [503, ServiceUnavailableError],
+  ] as const)('should propagate requestId for status %i', (status, ErrorClass) => {
+    const err = createErrorFromStatus(status, 'msg', undefined, undefined, 'req-abc');
+    expect(err).toBeInstanceOf(ErrorClass);
+    expect(err.requestId).toBe('req-abc');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -395,7 +424,7 @@ describe('type guards', () => {
   });
 
   it('isRateLimitError', () => {
-    expect(isRateLimitError(new RateLimitError(10))).toBe(true);
+    expect(isRateLimitError(new RateLimitError(undefined, 10))).toBe(true);
     expect(isRateLimitError(new SdkApiError(429, 'z'))).toBe(false);
   });
 });
