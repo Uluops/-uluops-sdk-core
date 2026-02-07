@@ -256,11 +256,29 @@ describe('parseRateLimitHeaders()', () => {
     expect(parseRateLimitHeaders(headers)).toBeNull();
   });
 
-  it('should return null when headers have non-numeric values', () => {
+  it('should return null when limit is non-numeric', () => {
     const headers = makeHeaders({
       'x-ratelimit-limit': 'abc',
       'x-ratelimit-remaining': '42',
       'x-ratelimit-reset': '1700000000',
+    });
+    expect(parseRateLimitHeaders(headers)).toBeNull();
+  });
+
+  it('should return null when remaining is non-numeric', () => {
+    const headers = makeHeaders({
+      'x-ratelimit-limit': '100',
+      'x-ratelimit-remaining': 'xyz',
+      'x-ratelimit-reset': '1700000000',
+    });
+    expect(parseRateLimitHeaders(headers)).toBeNull();
+  });
+
+  it('should return null when reset is non-numeric', () => {
+    const headers = makeHeaders({
+      'x-ratelimit-limit': '100',
+      'x-ratelimit-remaining': '42',
+      'x-ratelimit-reset': 'not-a-number',
     });
     expect(parseRateLimitHeaders(headers)).toBeNull();
   });

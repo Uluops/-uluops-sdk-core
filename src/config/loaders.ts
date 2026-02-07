@@ -161,7 +161,11 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
     };
   } catch (error) {
     const logger = createLogger('[sdk-core:config]', false);
-    logger.debug('Failed to load stored credentials:', error instanceof Error ? error.message : String(error));
+    if (error instanceof SyntaxError) {
+      logger.debug(`Invalid JSON in credentials file ${credPath}:`, error.message);
+    } else {
+      logger.debug('Failed to read credentials file:', error instanceof Error ? error.message : String(error));
+    }
     return null;
   }
 }

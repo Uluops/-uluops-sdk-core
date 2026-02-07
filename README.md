@@ -447,7 +447,7 @@ import { retry, sleep } from '@uluops/sdk-core/utils';
 // Retry an async operation with exponential backoff
 const result = await retry(
   () => fetchData(),
-  { maxAttempts: 3, baseMs: 1000, maxMs: 30000 },
+  { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 30000 },
 );
 
 // Simple delay

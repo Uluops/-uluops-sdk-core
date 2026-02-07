@@ -65,22 +65,25 @@ const REDACTED_DETAIL_KEYS = new Set([
 ]);
 
 /**
+ * Type guard: value is a non-null object with string-keyed properties
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
  * Safely extract error fields from an unknown API response body
  */
 function extractErrorBody(
   data: unknown
 ): { code?: string; message?: string; details?: Record<string, unknown> } | undefined {
-  if (typeof data !== 'object' || data === null || !('error' in data)) return undefined;
-  const error = (data as Record<string, unknown>).error;
-  if (typeof error !== 'object' || error === null) return undefined;
-  const err = error as Record<string, unknown>;
+  if (!isRecord(data) || !('error' in data)) return undefined;
+  const error = data.error;
+  if (!isRecord(error)) return undefined;
   return {
-    code: typeof err.code === 'string' ? err.code : undefined,
-    message: typeof err.message === 'string' ? err.message : undefined,
-    details:
-      typeof err.details === 'object' && err.details !== null
-        ? (err.details as Record<string, unknown>)
-        : undefined,
+    code: typeof error.code === 'string' ? error.code : undefined,
+    message: typeof error.message === 'string' ? error.message : undefined,
+    details: isRecord(error.details) ? error.details : undefined,
   };
 }
 
@@ -182,6 +185,9 @@ export class HttpClient {
    * need runtime guarantees that the response matches `T`, pass a Zod schema
    * via `options.schema` — the response will be parsed and any mismatch throws
    * a ZodError before the value reaches your code.
+   *
+   * **204 No Content:** Returns `undefined as T`. Callers expecting a 204
+   * should type as `request<void>(...)` or handle the undefined case.
    */
   async request<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -271,19 +277,16 @@ export class HttpClient {
   }
 
   /**
-   * Execute a fetch request
+   * Build a URL with query parameters applied
    */
-  private async doFetch<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+  private buildRequestUrl(
     endpoint: string,
+    method: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string> }
-  ): Promise<T> {
+    params?: object
+  ): URL {
     const url = new URL(this.buildUrl(endpoint));
-
-    // For GET requests, data goes into query params
-    // For other methods, params go into query string
-    const queryParams = method === 'GET' ? data : options?.params;
+    const queryParams = method === 'GET' ? data : params;
     if (queryParams) {
       for (const [key, value] of Object.entries(queryParams)) {
         if (value === undefined || value === null) {
@@ -298,8 +301,41 @@ export class HttpClient {
         }
       }
     }
+    return url;
+  }
 
-    // Build headers
+  /**
+   * Parse a JSON response body, unwrap the `{ data: T }` envelope, and return T
+   */
+  private parseJsonEnvelope<T>(text: string, status: number, method: string, endpoint: string): T {
+    let responseData: unknown;
+    try {
+      responseData = JSON.parse(text);
+    } catch {
+      throw new SdkApiError(status, `Invalid JSON response from ${method} ${endpoint}`);
+    }
+
+    if (!isDataEnvelope(responseData)) {
+      throw new Error(
+        `Unexpected API response format: expected { data: ... } wrapper but received ${
+          responseData === null ? 'null' : typeof responseData
+        }`
+      );
+    }
+    return responseData.data as T;
+  }
+
+  /**
+   * Execute a fetch request
+   */
+  private async doFetch<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    endpoint: string,
+    data?: object,
+    options?: { params?: object; headers?: Record<string, string> }
+  ): Promise<T> {
+    const url = this.buildRequestUrl(endpoint, method, data, options?.params);
+
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
       ...options?.headers,
@@ -308,10 +344,7 @@ export class HttpClient {
       headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
     }
 
-    // Prepare request body
     const body = method !== 'GET' ? JSON.stringify(data) : undefined;
-
-    // Fetch with timeout using AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -324,11 +357,8 @@ export class HttpClient {
       });
 
       this.logger.debug(`${method} ${endpoint} -> ${response.status}`);
-
-      // Parse rate limit headers
       this.lastRateLimitInfo = parseRateLimitHeaders(response.headers);
 
-      // Handle errors
       if (!response.ok) {
         if (response.status === 401 && !this.authStrategy) {
           throw new UnauthorizedError(
@@ -341,32 +371,16 @@ export class HttpClient {
         throw this.createHttpError(response.status, errorData, response.headers);
       }
 
-      // Handle 204 No Content
       if (response.status === 204) {
         return undefined as T;
       }
 
-      // Parse response
       const text = await response.text();
       if (!text) {
         return undefined as T;
       }
 
-      let responseData: unknown;
-      try {
-        responseData = JSON.parse(text);
-      } catch {
-        throw new SdkApiError(response.status, `Invalid JSON response from ${method} ${endpoint}`);
-      }
-
-      if (!isDataEnvelope(responseData)) {
-        throw new Error(
-          `Unexpected API response format: expected { data: ... } wrapper but received ${
-            responseData === null ? 'null' : typeof responseData
-          }`
-        );
-      }
-      return responseData.data as T;
+      return this.parseJsonEnvelope<T>(text, response.status, method, endpoint);
     } catch (error) {
       if (error instanceof SdkApiError) {
         this.logger.debug(`${method} ${endpoint} -> ${error.statusCode ?? 'ERROR'}`);
