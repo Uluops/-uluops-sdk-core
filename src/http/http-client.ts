@@ -527,7 +527,7 @@ export class HttpClient {
     return this.request<T>('GET', endpoint, params, options);
   }
 
-  async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
+  async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
