@@ -101,7 +101,7 @@ export class HttpClient {
   private readonly baseUrl: string;
   private readonly authBaseUrl: string;
   private readonly timeout: number;
-  private readonly authStrategy: AuthStrategy | null;
+  private authStrategy: AuthStrategy | null;
   private readonly logger: Logger;
   private readonly retries: number;
   private readonly defaultHeaders: Record<string, string>;
@@ -141,7 +141,7 @@ export class HttpClient {
    * Create a minimal FetchClient for auth strategy use (login/refresh).
    * Uses authBaseUrl for authentication endpoints.
    */
-  private createFetchClient(): FetchClient {
+  createFetchClient(): FetchClient {
     return {
       post: async <T>(url: string, body: object) => {
         const fullUrl = this.buildAuthUrl(url);
@@ -199,6 +199,7 @@ export class HttpClient {
       retryMutations?: boolean;
       headers?: Record<string, string>;
       schema?: ZodType<T>;
+      skipAuth?: boolean;
     }
   ): Promise<T> {
     const maxAttempts = options?.retries ?? this.retries;
@@ -341,7 +342,7 @@ export class HttpClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string> }
+    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean }
   ): Promise<T> {
     const url = this.buildRequestUrl(endpoint, method, data, options?.params);
 
@@ -349,7 +350,7 @@ export class HttpClient {
       ...this.defaultHeaders,
       ...options?.headers,
     };
-    if (this.authStrategy) {
+    if (this.authStrategy && !options?.skipAuth) {
       headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
     }
 
@@ -414,6 +415,7 @@ export class HttpClient {
       headers?: Record<string, string>;
       body?: string;
       removeContentType?: boolean;
+      skipAuth?: boolean;
     }
   ): Promise<Response> {
     const url = new URL(this.buildUrl(endpoint));
@@ -432,7 +434,7 @@ export class HttpClient {
     if (options?.removeContentType) {
       delete headers['Content-Type'];
     }
-    if (this.authStrategy) {
+    if (this.authStrategy && !options?.skipAuth) {
       headers['Authorization'] = this.authStrategy.getAuthorizationHeader();
     }
 
@@ -525,19 +527,19 @@ export class HttpClient {
     return this.request<T>('GET', endpoint, params, options);
   }
 
-  async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T> }): Promise<T> {
+  async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
-  async patch<T>(endpoint: string, data?: object, options?: { params?: object }): Promise<T> {
+  async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 
-  async put<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T> }): Promise<T> {
+  async put<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
-  async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T> }): Promise<T> {
+  async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('DELETE', endpoint, data, options);
   }
 
@@ -546,6 +548,13 @@ export class HttpClient {
    */
   getAuthStrategy(): AuthStrategy | null {
     return this.authStrategy;
+  }
+
+  /**
+   * Replace the auth strategy (e.g., after login obtains a session token).
+   */
+  setAuthStrategy(strategy: AuthStrategy | null): void {
+    this.authStrategy = strategy;
   }
 
   /**
