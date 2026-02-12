@@ -5,6 +5,16 @@
  * are NOT included here — each SDK defines those in its own constants file.
  */
 
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const packageJson = require('../../package.json') as { version: string };
+
+/**
+ * sdk-core package version (read from package.json)
+ */
+export const SDK_CORE_VERSION: string = packageJson.version;
+
 /**
  * Default request timeout in milliseconds
  */

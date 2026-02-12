@@ -48,6 +48,7 @@ export {
 } from './config/loaders.js';
 
 export {
+  SDK_CORE_VERSION,
   DEFAULT_TIMEOUT,
   DEFAULT_RETRY_COUNT,
   BACKOFF_BASE_MS,

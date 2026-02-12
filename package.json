@@ -28,7 +28,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -46,14 +47,18 @@
     "infrastructure"
   ],
   "author": "UluOps <hello@uluops.ai>",
+  "publishConfig": {
+    "access": "restricted"
+  },
   "bugs": {
-    "url": "https://github.com/Uluops/-uluops-sdk-core/issues"
+    "url": "https://github.com/uluops/uluops/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Uluops/-uluops-sdk-core.git"
+    "url": "https://github.com/uluops/uluops.git",
+    "directory": "packages/sdk-core"
   },
-  "homepage": "https://github.com/Uluops/-uluops-sdk-core#readme",
+  "homepage": "https://github.com/uluops/uluops/tree/main/packages/sdk-core#readme",
   "license": "MIT",
   "dependencies": {
     "dotenv": "^16.4.7",

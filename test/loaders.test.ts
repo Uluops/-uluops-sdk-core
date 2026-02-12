@@ -391,48 +391,47 @@ describe('loadConfig()', () => {
     expect(config.baseUrl).toBe('http://default:3100/api');
   });
 
-  it('should fall back to localhost when nothing specified', () => {
-    const config = loadConfig();
-    expect(config.baseUrl).toBe('http://localhost:3100/api/v1');
+  it('should throw when no base URL configured', () => {
+    expect(() => loadConfig()).toThrow('No base URL configured');
   });
 
   it('should set authBaseUrl from explicit param', () => {
-    const config = loadConfig({ authBaseUrl: 'http://auth:3200/api' });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', authBaseUrl: 'http://auth:3200/api' });
     expect(config.authBaseUrl).toBe('http://auth:3200/api');
   });
 
   it('should set authBaseUrl from env var', () => {
     vi.stubEnv('ULUOPS_AUTH_BASE_URL', 'http://authenv:3200/api');
-    const config = loadConfig({ envVars: testEnvVars });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', envVars: testEnvVars });
     expect(config.authBaseUrl).toBe('http://authenv:3200/api');
     vi.unstubAllEnvs();
   });
 
   it('should set debug from explicit param', () => {
-    const config = loadConfig({ debug: true });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', debug: true });
     expect(config.debug).toBe(true);
   });
 
   it('should set debug from env var', () => {
     vi.stubEnv('ULUOPS_DEBUG', 'true');
-    const config = loadConfig({ envVars: testEnvVars });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', envVars: testEnvVars });
     expect(config.debug).toBe(true);
     vi.unstubAllEnvs();
   });
 
   it('should default debug to false', () => {
-    const config = loadConfig();
+    const config = loadConfig({ baseUrl: 'http://test:3100/api' });
     expect(config.debug).toBe(false);
   });
 
   it('should pass through timeout and retries', () => {
-    const config = loadConfig({ timeout: 5000, retries: 5 });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', timeout: 5000, retries: 5 });
     expect(config.timeout).toBe(5000);
     expect(config.retries).toBe(5);
   });
 
   it('should load credentials into config', () => {
-    const config = loadConfig({ apiKey: TEST_API_KEY });
+    const config = loadConfig({ baseUrl: 'http://test:3100/api', apiKey: TEST_API_KEY });
     expect(config.credentials).toEqual({ apiKey: TEST_API_KEY });
   });
 

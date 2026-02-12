@@ -270,8 +270,13 @@ export function loadConfig(options: {
   // Determine base URL
   const baseUrl = options.baseUrl
     ?? (envVars ? process.env[envVars.baseUrl] : undefined)
-    ?? options.defaults?.baseUrl
-    ?? 'http://localhost:3100/api/v1';
+    ?? options.defaults?.baseUrl;
+
+  if (!baseUrl) {
+    throw new Error(
+      'No base URL configured. Provide baseUrl via options, environment variable, or defaults.'
+    );
+  }
 
   // Determine auth base URL
   const authBaseUrl = options.authBaseUrl
