@@ -260,8 +260,10 @@ describe('truncate()', () => {
     expect(truncate('abcdef', 5)).toBe('ab...');
   });
 
-  it('should handle very short maxLength', () => {
-    expect(truncate('abcdefgh', 3)).toBe('...');
+  it('should handle very short maxLength by truncating without ellipsis', () => {
+    expect(truncate('abcdefgh', 3)).toBe('abc');
+    expect(truncate('abcdefgh', 1)).toBe('a');
+    expect(truncate('abcdefgh', 0)).toBe('');
   });
 
   it('should handle empty string', () => {

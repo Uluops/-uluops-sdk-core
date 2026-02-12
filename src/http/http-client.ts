@@ -20,6 +20,8 @@ import {
   NetworkError,
   TimeoutError,
   UnauthorizedError,
+  RateLimitError,
+  ServiceUnavailableError,
 } from '../errors/errors.js';
 import { createAuthStrategy, type AuthStrategy, type AuthConfig } from './auth-strategy.js';
 import type { FetchClient } from './fetch-adapter.js';
@@ -653,8 +655,8 @@ export class HttpClient {
    */
   private calculateBackoffWithRetryAfter(error: Error, attempt: number): number {
     // Prefer server-specified retry-after (in seconds) from 429/503 responses
-    if (error instanceof SdkApiError) {
-      const retryAfter = (error as SdkApiError & { retryAfter?: number }).retryAfter;
+    if (error instanceof RateLimitError || error instanceof ServiceUnavailableError) {
+      const { retryAfter } = error;
       if (typeof retryAfter === 'number' && retryAfter > 0) {
         // Cap at MAX_BACKOFF_MS to prevent absurd waits
         return Math.min(retryAfter * 1000, MAX_BACKOFF_MS);

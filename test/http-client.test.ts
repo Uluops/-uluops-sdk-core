@@ -72,7 +72,7 @@ describe('HttpClient construction', () => {
     expect(strategy!.getType()).toBe('session');
   });
 
-  it('should set custom headers', () => {
+  it('should include defaultHeaders in every request', () => {
     const scope = nock(TEST_BASE_URL)
       .get(apiPath('/test'))
       .matchHeader('x-custom', 'value')
