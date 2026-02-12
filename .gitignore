@@ -30,3 +30,7 @@ coverage/
 npm-debug.log*
 
 docs
+
+# Auto-generated memory files
+CLAUDE.md
+**/CLAUDE.md
