@@ -159,8 +159,8 @@ const created = await client.post<MyType>('/endpoint', { name: 'value' });
 // PUT
 const updated = await client.put<MyType>('/endpoint/123', { name: 'updated' });
 
-// PATCH
-const patched = await client.patch<MyType>('/endpoint/123', { name: 'patched' });
+// PATCH (supports options: params, skipAuth)
+const patched = await client.patch<MyType>('/endpoint/123', { name: 'patched' }, { skipAuth: true });
 
 // DELETE
 await client.delete('/endpoint/123');

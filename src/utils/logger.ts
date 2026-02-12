@@ -27,13 +27,18 @@ const SENSITIVE_KEYS = /^(api[_-]?key|token|session[_-]?token|secret|password|au
 /**
  * Sanitize a single value for safe logging by redacting sensitive fields in objects
  */
-export function sanitizeForLog(value: unknown): unknown {
+export function sanitizeForLog(value: unknown, seen = new WeakSet<object>()): unknown {
   if (value === null || value === undefined || typeof value !== 'object') {
     return value;
   }
 
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+  seen.add(value);
+
   if (Array.isArray(value)) {
-    return value.map(sanitizeForLog);
+    return value.map(item => sanitizeForLog(item, seen));
   }
 
   const result: Record<string, unknown> = {};
@@ -41,7 +46,7 @@ export function sanitizeForLog(value: unknown): unknown {
     if (SENSITIVE_KEYS.test(key)) {
       result[key] = '[REDACTED]';
     } else if (typeof val === 'object' && val !== null) {
-      result[key] = sanitizeForLog(val);
+      result[key] = sanitizeForLog(val, seen);
     } else {
       result[key] = val;
     }
@@ -54,16 +59,21 @@ export function sanitizeForLog(value: unknown): unknown {
  * Returns a new object with sensitive string values replaced.
  * Used by error toJSON() for safe serialization.
  */
-export function sanitizeForDisplay(obj: Record<string, unknown>): Record<string, unknown> {
+export function sanitizeForDisplay(obj: Record<string, unknown>, seen = new WeakSet<object>()): Record<string, unknown> {
+  if (seen.has(obj)) {
+    return { '[Circular]': true };
+  }
+  seen.add(obj);
+
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      result[key] = sanitizeForDisplay(value as Record<string, unknown>);
+      result[key] = sanitizeForDisplay(value as Record<string, unknown>, seen);
     } else if (Array.isArray(value)) {
       result[key] = value.map((item) =>
         item && typeof item === 'object'
-          ? sanitizeForDisplay(item as Record<string, unknown>)
+          ? sanitizeForDisplay(item as Record<string, unknown>, seen)
           : item
       );
     } else if (SENSITIVE_KEYS.test(key) && typeof value === 'string') {
@@ -88,7 +98,7 @@ export function createLogger(prefix: string, enabled: boolean): Logger {
     // Even when debug logging is disabled, error and warn should still
     // emit — these represent real problems that callers need to see.
     const timestamp = () => new Date().toISOString();
-    const sanitizeArgs = (args: unknown[]): unknown[] => args.map(sanitizeForLog);
+    const sanitizeArgs = (args: unknown[]): unknown[] => args.map(a => sanitizeForLog(a));
     return {
       debug: noop,
       info: noop,
@@ -102,7 +112,7 @@ export function createLogger(prefix: string, enabled: boolean): Logger {
   }
 
   const timestamp = () => new Date().toISOString();
-  const sanitizeArgs = (args: unknown[]): unknown[] => args.map(sanitizeForLog);
+  const sanitizeArgs = (args: unknown[]): unknown[] => args.map(a => sanitizeForLog(a));
 
   return {
     debug(message: string, ...args: unknown[]): void {

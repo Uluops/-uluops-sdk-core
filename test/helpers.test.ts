@@ -228,6 +228,18 @@ describe('isUuid()', () => {
     expect(isUuid('550e8400-e29b-41d4-0716-446655440000')).toBe(false);
     expect(isUuid('550e8400-e29b-41d4-c716-446655440000')).toBe(false);
   });
+
+  it('should reject mutated UUIDs (single-character corruptions)', () => {
+    const valid = '550e8400-e29b-41d4-a716-446655440000';
+    // Replace hex char with non-hex
+    expect(isUuid(valid.replace('5', 'z'))).toBe(false);
+    // Remove a character (wrong length)
+    expect(isUuid(valid.slice(1))).toBe(false);
+    // Add a character
+    expect(isUuid('0' + valid)).toBe(false);
+    // Replace dash with hex (wrong format)
+    expect(isUuid(valid.replace('-', 'f'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

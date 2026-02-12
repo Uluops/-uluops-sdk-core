@@ -61,7 +61,7 @@
   "homepage": "https://github.com/uluops/uluops/tree/main/packages/sdk-core#readme",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.2.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {

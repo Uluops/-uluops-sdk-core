@@ -26,10 +26,16 @@ export {
   createErrorFromStatus,
   isSdkApiError,
   isValidationError,
+  isUnauthorizedError,
+  isForbiddenError,
   isNotFoundError,
   isConflictError,
+  isPayloadTooLargeError,
   isUnprocessableError,
   isRateLimitError,
+  isServiceUnavailableError,
+  isNetworkError,
+  isTimeoutError,
 } from './errors/errors.js';
 
 // Config

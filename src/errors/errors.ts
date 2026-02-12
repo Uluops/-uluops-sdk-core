@@ -275,3 +275,45 @@ export function isUnprocessableError(error: unknown): error is UnprocessableErro
 export function isRateLimitError(error: unknown): error is RateLimitError {
   return error instanceof RateLimitError;
 }
+
+/**
+ * Type guard for UnauthorizedError
+ */
+export function isUnauthorizedError(error: unknown): error is UnauthorizedError {
+  return error instanceof UnauthorizedError;
+}
+
+/**
+ * Type guard for ForbiddenError
+ */
+export function isForbiddenError(error: unknown): error is ForbiddenError {
+  return error instanceof ForbiddenError;
+}
+
+/**
+ * Type guard for PayloadTooLargeError
+ */
+export function isPayloadTooLargeError(error: unknown): error is PayloadTooLargeError {
+  return error instanceof PayloadTooLargeError;
+}
+
+/**
+ * Type guard for ServiceUnavailableError
+ */
+export function isServiceUnavailableError(error: unknown): error is ServiceUnavailableError {
+  return error instanceof ServiceUnavailableError;
+}
+
+/**
+ * Type guard for NetworkError
+ */
+export function isNetworkError(error: unknown): error is NetworkError {
+  return error instanceof NetworkError;
+}
+
+/**
+ * Type guard for TimeoutError
+ */
+export function isTimeoutError(error: unknown): error is TimeoutError {
+  return error instanceof TimeoutError;
+}

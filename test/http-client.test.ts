@@ -143,6 +143,64 @@ describe('HttpClient.get()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Zod schema validation
+// ---------------------------------------------------------------------------
+describe('Zod schema validation', () => {
+  it('should validate response against schema on request()', async () => {
+    const { z } = await import('zod');
+    const schema = z.object({ id: z.number(), name: z.string() });
+
+    nock(TEST_BASE_URL)
+      .get(apiPath('/validated'))
+      .reply(200, { data: { id: 1, name: 'test' } });
+
+    const client = makeClient();
+    const result = await client.request<z.infer<typeof schema>>('GET', '/validated', undefined, { schema });
+    expect(result).toEqual({ id: 1, name: 'test' });
+  });
+
+  it('should throw ZodError when response does not match schema', async () => {
+    const { z } = await import('zod');
+    const schema = z.object({ id: z.number(), name: z.string() });
+
+    nock(TEST_BASE_URL)
+      .get(apiPath('/bad-shape'))
+      .reply(200, { data: { id: 'not-a-number', name: 123 } });
+
+    const client = makeClient();
+    await expect(
+      client.request<z.infer<typeof schema>>('GET', '/bad-shape', undefined, { schema })
+    ).rejects.toThrow();
+  });
+
+  it('should validate response via get() options.schema', async () => {
+    const { z } = await import('zod');
+    const schema = z.object({ items: z.array(z.string()) });
+
+    nock(TEST_BASE_URL)
+      .get(apiPath('/list'))
+      .reply(200, { data: { items: ['a', 'b'] } });
+
+    const client = makeClient();
+    const result = await client.get<z.infer<typeof schema>>('/list', undefined, { schema });
+    expect(result).toEqual({ items: ['a', 'b'] });
+  });
+
+  it('should validate response via requestRaw() options.schema', async () => {
+    const { z } = await import('zod');
+    const schema = z.object({ raw: z.boolean() });
+
+    nock(TEST_BASE_URL)
+      .get(apiPath('/raw-validated'))
+      .reply(200, { raw: true });
+
+    const client = makeClient();
+    const result = await client.requestRaw<z.infer<typeof schema>>('GET', '/raw-validated', undefined, { schema });
+    expect(result).toEqual({ raw: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST / PATCH / PUT / DELETE
 // ---------------------------------------------------------------------------
 describe('HttpClient mutation methods', () => {
