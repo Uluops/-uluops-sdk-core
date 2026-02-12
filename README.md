@@ -321,11 +321,11 @@ if (isSdkApiError(error)) {
 Errors safely serialize to JSON with sensitive details redacted:
 
 ```typescript
-const error = new NotFoundError('Item not found', { id: '123', sql: 'SELECT ...' });
+const error = new NotFoundError('Item not found', { id: '123', apiKey: 'ulr_secret' });
 console.log(JSON.stringify(error));
 // { "name": "SdkApiError", "code": "NOT_FOUND", "statusCode": 404,
-//   "message": "Item not found", "details": { "id": "123" } }
-// Note: 'sql' key is automatically stripped
+//   "message": "Item not found", "details": { "id": "123", "apiKey": "[REDACTED]" } }
+// Note: keys matching sensitive patterns (apiKey, token, secret, etc.) are automatically redacted
 ```
 
 ---
@@ -394,14 +394,29 @@ console.log(getCredentialsPath());
 const stored = loadStoredCredentials();
 ```
 
+#### Environment & Paths
+
+```typescript
+import { loadEnvFiles, getGlobalConfigDir } from '@uluops/sdk-core/config';
+
+// Load .env from cwd and ~/.uluops/.env
+loadEnvFiles();
+
+// Get the global config directory path (~/.uluops)
+const configDir = getGlobalConfigDir();
+```
+
 #### Constants
 
 ```typescript
 import {
+  SDK_CORE_VERSION,      // package version string
   DEFAULT_TIMEOUT,       // 30000 ms
   DEFAULT_RETRY_COUNT,   // 3
   BACKOFF_BASE_MS,       // 1000 ms
   MAX_BACKOFF_MS,        // 30000 ms
+  JITTER_MIN,            // 0.1 (10% of delay)
+  JITTER_MAX,            // 0.2 (20% of delay)
   API_KEY_PREFIX,        // 'ulr_'
   HTTP_STATUS,           // { OK: 200, CREATED: 201, ... }
   ERROR_CODES,           // { NOT_FOUND: 'NOT_FOUND', ... }
@@ -469,9 +484,9 @@ isPlainObject([]);           // false
 isUuid('550e8400-...');      // true
 truncate('long string', 5); // 'long ...'
 
-// Build query params from an object
-const params = toQuery({ page: 1, tags: ['a', 'b'], empty: undefined });
-// { page: '1', tags: ['a', 'b'] } — undefined values stripped
+// Build query params from an object (accepts string, number, boolean, null)
+const params = toQuery({ page: 1, active: true, empty: undefined });
+// { page: 1, active: true } — undefined values stripped
 ```
 
 #### Rate Limit Parsing

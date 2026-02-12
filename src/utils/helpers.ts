@@ -14,6 +14,13 @@ export function sleep(ms: number): Promise<void> {
  *
  * @typeParam T - The return type of the function being retried.
  *   Must be inferrable from `fn` — callers should not need to specify it explicitly.
+ * @param fn - Async function to retry on failure
+ * @param options - Retry configuration
+ * @param options.maxRetries - Maximum number of attempts (default: 3)
+ * @param options.baseDelayMs - Initial delay in ms, doubled each retry (default: 1000)
+ * @param options.maxDelayMs - Cap on backoff delay in ms (default: 30000)
+ * @param options.shouldRetry - Predicate to decide if an error is retryable (default: always retry)
+ * @returns The resolved value of `fn` on success
  */
 export async function retry<T>(
   fn: () => Promise<T>,
