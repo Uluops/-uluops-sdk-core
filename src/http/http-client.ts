@@ -525,22 +525,57 @@ export class HttpClient {
     return { data: responseData, contentType, headers: response.headers };
   }
 
+  /**
+   * Send a GET request. Automatically retried on transient errors.
+   * @param endpoint - API endpoint path (e.g. '/items')
+   * @param params - Query parameters as key-value pairs
+   * @param options - Optional Zod schema for response validation
+   * @returns Parsed response body of type T
+   */
   async get<T>(endpoint: string, params?: object, options?: { schema?: ZodType<T> }): Promise<T> {
     return this.request<T>('GET', endpoint, params, options);
   }
 
+  /**
+   * Send a POST request. Not retried by default (use `retryMutations` to opt in).
+   * @param endpoint - API endpoint path
+   * @param data - Request body
+   * @param options - skipAuth to bypass auth, retryMutations to enable retry, schema for validation
+   * @returns Parsed response body of type T
+   */
   async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
+  /**
+   * Send a PATCH request. Not retried by default.
+   * @param endpoint - API endpoint path
+   * @param data - Request body with partial update fields
+   * @param options - params for query parameters, skipAuth to bypass auth
+   * @returns Parsed response body of type T
+   */
   async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 
+  /**
+   * Send a PUT request. Not retried by default.
+   * @param endpoint - API endpoint path
+   * @param data - Request body
+   * @param options - skipAuth to bypass auth, schema for validation
+   * @returns Parsed response body of type T
+   */
   async put<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
+  /**
+   * Send a DELETE request. Not retried by default.
+   * @param endpoint - API endpoint path
+   * @param data - Optional request body
+   * @param options - skipAuth to bypass auth, schema for validation
+   * @returns Parsed response body of type T
+   */
   async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('DELETE', endpoint, data, options);
   }
@@ -639,7 +674,10 @@ export class HttpClient {
           'See: https://github.com/uluops/uluops/tree/main/packages/sdk-core#authentication'
         );
       }
-      return new NetworkError(error.message, this.baseUrl);
+      return new NetworkError(
+        `${error.message}. Try: curl -I ${this.baseUrl ?? '<baseUrl>'}`,
+        this.baseUrl
+      );
     }
 
     if (error instanceof Error) {

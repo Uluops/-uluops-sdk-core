@@ -229,6 +229,7 @@ export function createAuthStrategy(config: AuthConfig): AuthStrategy {
   throw new Error(
     'No valid credentials provided. ' +
     'Set ULUOPS_API_KEY env var, or pass one of: apiKey, sessionToken, or email/password to the constructor. ' +
-    'Priority: apiKey > sessionToken > email/password.'
+    'Priority: apiKey > sessionToken > email/password. ' +
+    'Generate an API key at https://console.uluops.com/settings/api-keys'
   );
 }

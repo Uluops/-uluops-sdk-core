@@ -36,6 +36,8 @@ const data = await http.get<{ items: string[] }>('/items');
 const created = await http.post<{ id: string }>('/items', { name: 'new item' });
 ```
 
+> See [Error handling with typed errors](#error-handling-with-typed-errors) below for `try/catch` patterns.
+
 ### Using the HTTP client directly
 
 ```typescript
@@ -75,6 +77,7 @@ try {
 ## Table of Contents
 
 - [Overview](#overview)
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [API Reference](#api-reference)
   - [HttpClient](#httpclient)
@@ -96,6 +99,12 @@ This package extracts the shared infrastructure that was duplicated across `@ulu
 - **Configuration**: Credential chain loader (constructor > env vars > .env files > stored credentials)
 - **Utilities**: Logger with sensitive data redaction, retry with exponential backoff, rate limit header parsing
 
+## Prerequisites
+
+- Node.js 18.0.0 or higher (uses native `fetch`)
+- TypeScript 5.0+ (for TypeScript users)
+- ESM project (`"type": "module"` in package.json) — this package is ESM-only
+
 ## Installation
 
 ```bash
@@ -108,10 +117,6 @@ yarn add @uluops/sdk-core
 # pnpm
 pnpm add @uluops/sdk-core
 ```
-
-**Requirements:**
-- Node.js 18.0.0 or higher
-- TypeScript 5.0+ (for TypeScript users)
 
 ## API Reference
 
