@@ -581,6 +581,13 @@ export class HttpClient {
   }
 
   /**
+   * Get the auth base URL (for creating temporary clients with same auth endpoint)
+   */
+  getAuthBaseUrl(): string {
+    return this.authBaseUrl;
+  }
+
+  /**
    * Get the auth strategy (for session management)
    */
   getAuthStrategy(): AuthStrategy | null {
