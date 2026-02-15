@@ -22,6 +22,10 @@
       "import": "./dist/config/index.js",
       "types": "./dist/config/index.d.ts"
     },
+    "./config/constants": {
+      "import": "./dist/config/constants.js",
+      "types": "./dist/config/constants.d.ts"
+    },
     "./utils": {
       "import": "./dist/utils/index.js",
       "types": "./dist/utils/index.d.ts"
