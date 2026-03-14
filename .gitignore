@@ -31,6 +31,16 @@ npm-debug.log*
 
 docs
 
-# Auto-generated memory files
-CLAUDE.md
+# Claude Code context files (auto-generated, machine-local)
 **/CLAUDE.md
+!./CLAUDE.md
+
+# Claude Code session directory
+.claude/
+
+# WSL artifacts
+*:Zone.Identifier
+*.Zone.Identifier
+
+# Validation output artifacts
+*-report-*.md
