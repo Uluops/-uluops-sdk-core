@@ -89,9 +89,12 @@ export class ForbiddenError extends SdkApiError {
  */
 export class NotFoundError extends SdkApiError {
   constructor(resource: string, identifier?: string, requestId?: string) {
-    const message = identifier
-      ? `${resource} '${identifier}' not found`
-      : `${resource} not found`;
+    // If resource already contains "not found" (e.g., from API response), use it as-is
+    const message = resource.toLowerCase().includes('not found')
+      ? resource
+      : identifier
+        ? `${resource} '${identifier}' not found`
+        : `${resource} not found`;
     super(
       HTTP_STATUS.NOT_FOUND,
       message,
