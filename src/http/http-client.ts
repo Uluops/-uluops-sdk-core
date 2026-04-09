@@ -116,6 +116,10 @@ export class HttpClient {
     this.retries = config.retries ?? DEFAULT_RETRY_COUNT;
     this.baseUrl = config.baseUrl;
     this.authBaseUrl = config.authBaseUrl ?? config.baseUrl;
+    HttpClient.validateBaseUrl(this.baseUrl);
+    if (this.authBaseUrl !== this.baseUrl) {
+      HttpClient.validateBaseUrl(this.authBaseUrl);
+    }
     this.timeout = config.timeout ?? DEFAULT_TIMEOUT;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -726,6 +730,31 @@ export class HttpClient {
     const jitterRange = JITTER_MAX - JITTER_MIN;
     const jitter = delay * (JITTER_MIN + Math.random() * jitterRange);
     return Math.min(delay + jitter, MAX_BACKOFF_MS);
+  }
+
+  /**
+   * Validate that a base URL uses HTTPS for non-loopback targets.
+   * Prevents SSRF via environment variable injection and cleartext credential transmission.
+   */
+  private static validateBaseUrl(url: string): void {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:') return;
+      // Allow HTTP for loopback addresses (local development)
+      const host = parsed.hostname;
+      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+      if (!isLoopback) {
+        throw new Error(
+          `baseUrl must use HTTPS for non-loopback targets (got ${parsed.protocol}//${parsed.hostname}). ` +
+          `HTTP is only allowed for localhost/127.0.0.1 during development.`
+        );
+      }
+    } catch (e) {
+      if (e instanceof TypeError) {
+        throw new Error(`Invalid baseUrl: ${url}`);
+      }
+      throw e;
+    }
   }
 
   /**
