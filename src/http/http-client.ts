@@ -5,7 +5,7 @@
  * that passes SDK-specific defaults (baseUrl, sdkName, loggerPrefix, etc.).
  */
 
-import type { ZodType } from 'zod';
+import { ZodError, type ZodType } from 'zod';
 import {
   DEFAULT_TIMEOUT,
   DEFAULT_RETRY_COUNT,
@@ -16,6 +16,7 @@ import {
 } from '../config/constants.js';
 import {
   SdkApiError,
+  ResponseValidationError,
   createErrorFromStatus,
   NetworkError,
   TimeoutError,
@@ -213,7 +214,14 @@ export class HttpClient {
       try {
         const result = await this.doFetch<T>(method, endpoint, data, options);
         if (options?.schema) {
-          return options.schema.parse(result);
+          try {
+            return options.schema.parse(result);
+          } catch (zodErr) {
+            if (zodErr instanceof ZodError) {
+              throw new ResponseValidationError(endpoint, zodErr.issues);
+            }
+            throw zodErr;
+          }
         }
         return result;
       } catch (error) {
@@ -554,7 +562,7 @@ export class HttpClient {
    * @param options - params for query parameters, skipAuth to bypass auth
    * @returns Parsed response body of type T
    */
-  async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean }): Promise<T> {
+  async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean; schema?: ZodType<T> }): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 

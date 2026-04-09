@@ -196,6 +196,24 @@ export class TimeoutError extends SdkApiError {
 }
 
 /**
+ * API returned a successful HTTP response but the body did not match the expected schema.
+ * This is a contract violation, not a transient error — retrying will produce the same shape.
+ * Uses statusCode: 0 to indicate a client-side error (isRetryable() returns false).
+ */
+export class ResponseValidationError extends SdkApiError {
+  constructor(endpoint: string, issues: Array<{ path: PropertyKey[]; message: string }>) {
+    const fields = issues.map(i => i.path.map(String).join('.')).join(', ');
+    super(
+      0,
+      `API response validation failed on ${endpoint}: unexpected shape on fields [${fields}]`,
+      ERROR_CODES.RESPONSE_VALIDATION_ERROR,
+      { endpoint, issues }
+    );
+    this.name = 'ResponseValidationError';
+  }
+}
+
+/**
  * Create appropriate error from HTTP status code
  */
 export function createErrorFromStatus(
@@ -319,4 +337,8 @@ export function isNetworkError(error: unknown): error is NetworkError {
  */
 export function isTimeoutError(error: unknown): error is TimeoutError {
   return error instanceof TimeoutError;
+}
+
+export function isResponseValidationError(error: unknown): error is ResponseValidationError {
+  return error instanceof ResponseValidationError;
 }
