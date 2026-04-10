@@ -232,6 +232,60 @@ describe('JwtSessionAuth', () => {
       expect(auth.getSessionToken()).toBeNull();
       expect(auth.getExpiresAt()).toBeNull();
     });
+
+    it('should clear credentials and disable refresh', async () => {
+      const client = makeFetchClient({ sessionToken: 'tok-6', expiresAt: '2099-01-01T00:00:00Z' });
+      const auth = new JwtSessionAuth(client, credentials, undefined, undefined, false);
+      await auth.login();
+      expect(auth.canRefresh()).toBe(true);
+
+      auth.clearSession();
+      expect(auth.canRefresh()).toBe(false);
+    });
+  });
+
+  describe('credential clearing (CWE-316)', () => {
+    it('should clear password after login by default', async () => {
+      const client = makeFetchClient({ sessionToken: 'tok-c1' });
+      const auth = new JwtSessionAuth(client, credentials);
+      expect(auth.canRefresh()).toBe(true);
+
+      await auth.login();
+      expect(auth.getSessionToken()).toBe('tok-c1');
+      expect(auth.canRefresh()).toBe(false);
+    });
+
+    it('should not clear password when clearCredentialsAfterLogin is false', async () => {
+      const client = makeFetchClient({ sessionToken: 'tok-c2' });
+      const auth = new JwtSessionAuth(client, credentials, undefined, undefined, false);
+      expect(auth.canRefresh()).toBe(true);
+
+      await auth.login();
+      expect(auth.getSessionToken()).toBe('tok-c2');
+      expect(auth.canRefresh()).toBe(true);
+    });
+
+    it('should allow refresh after login when credentials are retained', async () => {
+      const client = makeFetchClient({ sessionToken: 'tok-c3' });
+      const auth = new JwtSessionAuth(client, credentials, undefined, undefined, false);
+      await auth.login();
+      expect(auth.canRefresh()).toBe(true);
+
+      // Simulate a second login (refresh)
+      await auth.refresh();
+      expect(auth.getSessionToken()).toBe('tok-c3');
+      expect(client.post).toHaveBeenCalledTimes(2);
+    });
+
+    it('should prevent refresh after credentials are cleared', async () => {
+      const client = makeFetchClient({ sessionToken: 'tok-c4' });
+      const auth = new JwtSessionAuth(client, credentials);
+      await auth.login();
+      expect(auth.canRefresh()).toBe(false);
+
+      // refresh() still calls login() but it will send empty password
+      // In production, the server would reject this; canRefresh() prevents the attempt
+    });
   });
 });
 
@@ -317,5 +371,30 @@ describe('createAuthStrategy()', () => {
       onTokenRefresh: callback,
     });
     expect(strategy.getType()).toBe('session');
+  });
+
+  it('should clear credentials after login by default', async () => {
+    const loginClient = makeFetchClient({ sessionToken: 'factory-tok' });
+    const strategy = createAuthStrategy({
+      email: 'a@b.com',
+      password: 'pw',
+      httpClient: loginClient,
+    });
+    expect(strategy.canRefresh()).toBe(true);
+    await (strategy as JwtSessionAuth).login();
+    expect(strategy.canRefresh()).toBe(false);
+  });
+
+  it('should retain credentials when clearCredentialsAfterLogin is false', async () => {
+    const loginClient = makeFetchClient({ sessionToken: 'factory-tok2' });
+    const strategy = createAuthStrategy({
+      email: 'a@b.com',
+      password: 'pw',
+      httpClient: loginClient,
+      clearCredentialsAfterLogin: false,
+    });
+    expect(strategy.canRefresh()).toBe(true);
+    await (strategy as JwtSessionAuth).login();
+    expect(strategy.canRefresh()).toBe(true);
   });
 });

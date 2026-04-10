@@ -41,6 +41,14 @@ export interface AuthConfig {
   sessionToken?: string;
   httpClient?: FetchClient;
   onTokenRefresh?: (token: string) => void;
+  /**
+   * Clear plaintext password from memory after successful login (CWE-316 mitigation).
+   * When `true` (default), the password is nulled after the first successful login,
+   * which disables automatic token refresh via re-login on 401.
+   * Set to `false` for long-lived unattended sessions (MCP servers, CLI daemons)
+   * that need automatic re-authentication.
+   */
+  clearCredentialsAfterLogin?: boolean;
 }
 
 /**
@@ -111,16 +119,20 @@ interface LoginApiResponse {
 export class JwtSessionAuth implements AuthStrategy {
   private sessionToken: string | null;
   private expiresAt: Date | null = null;
+  private credentialsCleared = false;
   private readonly hasLoginCredentials: boolean;
+  private readonly clearAfterLogin: boolean;
 
   constructor(
     private readonly httpClient: FetchClient,
-    private readonly credentials: { email: string; password: string },
+    private credentials: { email: string; password: string },
     private readonly onTokenRefresh?: (token: string) => void,
-    initialToken?: string
+    initialToken?: string,
+    clearCredentialsAfterLogin = true,
   ) {
     this.sessionToken = initialToken ?? null;
     this.hasLoginCredentials = !!(credentials.email && credentials.password);
+    this.clearAfterLogin = clearCredentialsAfterLogin;
   }
 
   /**
@@ -143,6 +155,12 @@ export class JwtSessionAuth implements AuthStrategy {
 
     this.onTokenRefresh?.(loginData.sessionToken);
 
+    // CWE-316: clear plaintext password from memory after successful login
+    if (this.clearAfterLogin && !this.credentialsCleared) {
+      this.credentials = { email: this.credentials.email, password: '' };
+      this.credentialsCleared = true;
+    }
+
     return loginData.sessionToken;
   }
 
@@ -156,7 +174,7 @@ export class JwtSessionAuth implements AuthStrategy {
   }
 
   canRefresh(): boolean {
-    return this.hasLoginCredentials;
+    return this.hasLoginCredentials && !this.credentialsCleared;
   }
 
   async refresh(): Promise<void> {
@@ -193,11 +211,15 @@ export class JwtSessionAuth implements AuthStrategy {
   }
 
   /**
-   * Clear the session (logout)
+   * Clear the session (logout) and any stored credentials
    */
   clearSession(): void {
     this.sessionToken = null;
     this.expiresAt = null;
+    if (!this.credentialsCleared) {
+      this.credentials = { email: this.credentials.email, password: '' };
+      this.credentialsCleared = true;
+    }
   }
 }
 
@@ -210,6 +232,8 @@ export function createAuthStrategy(config: AuthConfig): AuthStrategy {
     return new ApiKeyAuth(config.apiKey);
   }
 
+  const clearCreds = config.clearCredentialsAfterLogin ?? true;
+
   // Priority 2: Session token (already logged in)
   // Pass email/password through when available so refresh can re-login
   if (config.sessionToken && config.httpClient) {
@@ -217,13 +241,14 @@ export function createAuthStrategy(config: AuthConfig): AuthStrategy {
       config.httpClient,
       { email: config.email ?? '', password: config.password ?? '' },
       config.onTokenRefresh,
-      config.sessionToken
+      config.sessionToken,
+      clearCreds,
     );
   }
 
   // Priority 3: Email/password for session auth
   if (config.email && config.password && config.httpClient) {
-    return new JwtSessionAuth(config.httpClient, { email: config.email, password: config.password }, config.onTokenRefresh);
+    return new JwtSessionAuth(config.httpClient, { email: config.email, password: config.password }, config.onTokenRefresh, undefined, clearCreds);
   }
 
   throw new Error(
