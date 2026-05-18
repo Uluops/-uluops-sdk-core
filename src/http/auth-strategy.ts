@@ -139,29 +139,32 @@ export class JwtSessionAuth implements AuthStrategy {
    * Login and get a new session token
    */
   async login(): Promise<string> {
-    const response = await this.httpClient.post('/auth/login', {
-      email: this.credentials.email,
-      password: this.credentials.password,
-    });
+    try {
+      const response = await this.httpClient.post('/auth/login', {
+        email: this.credentials.email,
+        password: this.credentials.password,
+      });
 
-    const loginData = (response as LoginApiResponse)?.data?.data;
+      const loginData = (response as LoginApiResponse)?.data?.data;
 
-    if (!loginData?.sessionToken) {
-      throw new Error('Login response missing sessionToken');
+      if (!loginData?.sessionToken) {
+        throw new Error('Login response missing sessionToken');
+      }
+
+      this.sessionToken = loginData.sessionToken;
+      this.expiresAt = loginData.expiresAt ? new Date(loginData.expiresAt) : null;
+
+      this.onTokenRefresh?.(loginData.sessionToken);
+
+      return loginData.sessionToken;
+    } finally {
+      // CWE-316: clear plaintext password from memory after first login attempt
+      // (success or failure) to prevent credential retention on refresh errors
+      if (this.clearAfterLogin && !this.credentialsCleared) {
+        this.credentials = { email: this.credentials.email, password: '' };
+        this.credentialsCleared = true;
+      }
     }
-
-    this.sessionToken = loginData.sessionToken;
-    this.expiresAt = loginData.expiresAt ? new Date(loginData.expiresAt) : null;
-
-    this.onTokenRefresh?.(loginData.sessionToken);
-
-    // CWE-316: clear plaintext password from memory after successful login
-    if (this.clearAfterLogin && !this.credentialsCleared) {
-      this.credentials = { email: this.credentials.email, password: '' };
-      this.credentialsCleared = true;
-    }
-
-    return loginData.sessionToken;
   }
 
   getAuthorizationHeader(): string {
