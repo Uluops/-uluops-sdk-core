@@ -683,18 +683,11 @@ export class HttpClient {
     }
 
     if (error instanceof TypeError) {
-      // When no credentials are configured and the server is unreachable,
-      // the most helpful error is an UnauthorizedError that tells the user
-      // to configure credentials — rather than a raw NetworkError.
-      if (!this.authStrategy) {
-        return new UnauthorizedError(
-          `Network error: ${error.message}. No credentials configured — set ULUOPS_API_KEY ` +
-          'environment variable, pass apiKey to the constructor, or provide sessionToken. ' +
-          'See: https://github.com/uluops/uluops/tree/main/packages/sdk-core#authentication'
-        );
-      }
+      const hint = !this.authStrategy
+        ? ' (No credentials configured — if this is not a public endpoint, set ULUOPS_API_KEY or pass apiKey to the constructor.)'
+        : '';
       return new NetworkError(
-        `${error.message}. Try: curl -I ${this.baseUrl ?? '<baseUrl>'}`,
+        `${error.message}${hint}. Try: curl -I ${this.baseUrl ?? '<baseUrl>'}`,
         this.baseUrl
       );
     }
@@ -740,10 +733,13 @@ export class HttpClient {
     try {
       const parsed = new URL(url);
       if (parsed.protocol === 'https:') return;
-      // Allow HTTP for loopback addresses (local development)
+      // Allow HTTP for loopback and private network addresses (VPC, local dev)
       const host = parsed.hostname;
       const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
-      if (!isLoopback) {
+      const isPrivate = host.startsWith('10.') ||
+        host.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+      if (!isLoopback && !isPrivate) {
         throw new Error(
           `baseUrl must use HTTPS for non-loopback targets (got ${parsed.protocol}//${parsed.hostname}). ` +
           `HTTP is only allowed for localhost/127.0.0.1 during development.`

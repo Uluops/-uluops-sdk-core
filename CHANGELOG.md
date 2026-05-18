@@ -5,6 +5,11 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-18
+
+### Fixed
+- `handleFetchError` no longer misclassifies `TypeError` (DNS failure, ECONNREFUSED) as `UnauthorizedError` when no auth strategy is configured. Now returns `NetworkError` with an appended credential hint for the common misconfiguration case. Consumers can catch via `isNetworkError()` regardless of auth state.
+
 ## [0.1.0] - 2026-02-06
 
 Initial release. Extracts ~1,500 lines of shared infrastructure from `@uluops/ops-sdk` and `@uluops/registry-sdk` into a single reusable package.
@@ -46,7 +51,6 @@ Initial release. Extracts ~1,500 lines of shared infrastructure from `@uluops/op
 ### Fixed
 
 - Error helper URLs now point to correct repository path (`uluops/uluops/tree/main/packages/sdk-core`)
-- `TypeError` from network failures (DNS, ECONNREFUSED) no longer misclassified as `UnauthorizedError`
 - README `resetAt` references corrected to `reset` matching the `RateLimitInfo` interface
 - README `requestBinary` example corrected to show required `method` parameter and `.data` return property
 - Unawaited `login().then()` in auth expiration test converted to proper `async/await`
