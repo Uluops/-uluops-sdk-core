@@ -15,7 +15,7 @@ import {
   NetworkError,
   TimeoutError,
 } from '../src/errors/errors.js';
-import { TEST_BASE_URL, TEST_BASE_PATH, TEST_FULL_URL, TEST_API_KEY } from './setup.js';
+import { TEST_BASE_URL, TEST_BASE_PATH, TEST_FULL_URL, TEST_API_KEY, TEST_JWT, TEST_JWT_STALE } from './setup.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,7 +65,7 @@ describe('HttpClient construction', () => {
   it('should create with sessionToken', () => {
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'session-tok',
+      sessionToken: TEST_JWT,
     });
     const strategy = client.getAuthStrategy();
     expect(strategy).not.toBeNull();
@@ -481,7 +481,7 @@ describe('401 token refresh', () => {
     // First request with stale token returns 401
     nock(TEST_BASE_URL)
       .get(apiPath('/protected'))
-      .matchHeader('Authorization', 'Bearer stale-tok')
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
       .reply(401, { error: { message: 'expired' } });
 
     // Auth login endpoint — refresh calls login()
@@ -497,7 +497,7 @@ describe('401 token refresh', () => {
 
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'stale-tok',
+      sessionToken: TEST_JWT_STALE,
       email: 'a@b.com',
       password: 'pw',
       retries: 3,
@@ -511,11 +511,11 @@ describe('401 token refresh', () => {
     // Two concurrent requests both get 401 — only ONE login should happen.
     nock(TEST_BASE_URL)
       .get(apiPath('/concurrent1'))
-      .matchHeader('Authorization', 'Bearer stale-tok')
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
       .reply(401, { error: { message: 'expired' } });
     nock(TEST_BASE_URL)
       .get(apiPath('/concurrent2'))
-      .matchHeader('Authorization', 'Bearer stale-tok')
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
       .reply(401, { error: { message: 'expired' } });
 
     // Single login endpoint (only intercepted once — if called twice, nock will error)
@@ -535,7 +535,7 @@ describe('401 token refresh', () => {
 
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'stale-tok',
+      sessionToken: TEST_JWT_STALE,
       email: 'a@b.com',
       password: 'pw',
       retries: 3,
@@ -574,7 +574,7 @@ describe('401 token refresh', () => {
 
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'stale-tok',
+      sessionToken: TEST_JWT_STALE,
       email: 'a@b.com',
       password: 'pw',
       retries: 4,
@@ -592,7 +592,7 @@ describe('401 token refresh', () => {
 
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'stale-tok',
+      sessionToken: TEST_JWT_STALE,
       retries: 1,
     });
 
@@ -624,11 +624,11 @@ describe('401 token refresh', () => {
     // Two concurrent requests both get 401
     nock(TEST_BASE_URL)
       .get(apiPath('/fail-concurrent1'))
-      .matchHeader('Authorization', 'Bearer stale-tok')
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
       .reply(401, { error: { message: 'expired' } });
     nock(TEST_BASE_URL)
       .get(apiPath('/fail-concurrent2'))
-      .matchHeader('Authorization', 'Bearer stale-tok')
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
       .reply(401, { error: { message: 'expired' } });
 
     // Single login endpoint fails — both waiters should receive the failure
@@ -638,7 +638,7 @@ describe('401 token refresh', () => {
 
     const client = makeClient({
       apiKey: undefined,
-      sessionToken: 'stale-tok',
+      sessionToken: TEST_JWT_STALE,
       email: 'a@b.com',
       password: 'wrong',
       retries: 1,

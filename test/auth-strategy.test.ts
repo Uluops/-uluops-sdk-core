@@ -9,7 +9,7 @@ import {
 } from '../src/http/auth-strategy.js';
 import type { FetchClient } from '../src/http/fetch-adapter.js';
 import { ValidationError, UnauthorizedError } from '../src/errors/errors.js';
-import { TEST_API_KEY } from './setup.js';
+import { TEST_API_KEY, TEST_JWT } from './setup.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,26 +103,32 @@ describe('JwtSessionAuth', () => {
   describe('with initial token', () => {
     it('should return Bearer header with initial token', () => {
       const client = makeFetchClient();
-      const auth = new JwtSessionAuth(client, credentials, undefined, 'init-tok');
-      expect(auth.getAuthorizationHeader()).toBe('Bearer init-tok');
+      const auth = new JwtSessionAuth(client, credentials, undefined, TEST_JWT);
+      expect(auth.getAuthorizationHeader()).toBe(`Bearer ${TEST_JWT}`);
     });
 
     it('should report authenticated', () => {
       const client = makeFetchClient();
-      const auth = new JwtSessionAuth(client, credentials, undefined, 'tok');
+      const auth = new JwtSessionAuth(client, credentials, undefined, TEST_JWT);
       expect(auth.isAuthenticated()).toBe(true);
     });
 
     it('should report type session', () => {
       const client = makeFetchClient();
-      const auth = new JwtSessionAuth(client, credentials, undefined, 'tok');
+      const auth = new JwtSessionAuth(client, credentials, undefined, TEST_JWT);
       expect(auth.getType()).toBe('session');
     });
 
     it('should be refreshable', () => {
       const client = makeFetchClient();
-      const auth = new JwtSessionAuth(client, credentials, undefined, 'tok');
+      const auth = new JwtSessionAuth(client, credentials, undefined, TEST_JWT);
       expect(auth.canRefresh()).toBe(true);
+    });
+
+    it('should reject non-JWT format initialToken', () => {
+      const client = makeFetchClient();
+      expect(() => new JwtSessionAuth(client, credentials, undefined, 'not-a-jwt'))
+        .toThrow('Invalid session token format');
     });
   });
 
@@ -298,7 +304,7 @@ describe('createAuthStrategy()', () => {
   it('should prioritize apiKey over everything else', () => {
     const strategy = createAuthStrategy({
       apiKey: TEST_API_KEY,
-      sessionToken: 'tok',
+      sessionToken: TEST_JWT,
       email: 'a@b.com',
       password: 'pw',
       httpClient,
@@ -309,16 +315,16 @@ describe('createAuthStrategy()', () => {
 
   it('should use sessionToken when no apiKey provided', () => {
     const strategy = createAuthStrategy({
-      sessionToken: 'my-session',
+      sessionToken: TEST_JWT,
       httpClient,
     });
     expect(strategy.getType()).toBe('session');
-    expect(strategy.getAuthorizationHeader()).toBe('Bearer my-session');
+    expect(strategy.getAuthorizationHeader()).toBe(`Bearer ${TEST_JWT}`);
   });
 
   it('should not be refreshable when created with sessionToken only (no email/password)', () => {
     const strategy = createAuthStrategy({
-      sessionToken: 'my-session',
+      sessionToken: TEST_JWT,
       httpClient,
     });
     expect(strategy.canRefresh()).toBe(false);
@@ -341,7 +347,7 @@ describe('createAuthStrategy()', () => {
   it('should throw when sessionToken provided without httpClient', () => {
     // sessionToken without httpClient falls through to email/password check
     // which also fails, so throws the general error
-    expect(() => createAuthStrategy({ sessionToken: 'tok' })).toThrow(
+    expect(() => createAuthStrategy({ sessionToken: TEST_JWT })).toThrow(
       'No valid credentials provided'
     );
   });
@@ -355,7 +361,7 @@ describe('createAuthStrategy()', () => {
   it('should pass onTokenRefresh to JwtSessionAuth from sessionToken', () => {
     const callback = vi.fn();
     const strategy = createAuthStrategy({
-      sessionToken: 'tok',
+      sessionToken: TEST_JWT,
       httpClient,
       onTokenRefresh: callback,
     });

@@ -22,7 +22,7 @@ export interface Logger {
 /**
  * Regex pattern for keys that should be redacted from logs
  */
-const SENSITIVE_KEYS = /^(api[_-]?key|token|session[_-]?token|secret|password|authorization|credentials|cookie|access[_-]?token|refresh[_-]?token)$/i;
+const SENSITIVE_KEYS = /^(api[_-]?key|token|bearer[_-]?token|session[_-]?token|secret|api[_-]?secret|password|passwd|authorization|credentials|cookie|access[_-]?token|refresh[_-]?token|jwt|auth[_-]?key)$/i;
 
 /**
  * Sanitize a single value for safe logging by redacting sensitive fields in objects

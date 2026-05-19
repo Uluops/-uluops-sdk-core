@@ -5,6 +5,17 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-05-19
+
+### Changed
+- **BREAKING**: `validateBaseUrl` no longer permits HTTP to private network ranges (10.x, 192.168.x, 172.16-31.x). Only localhost/127.0.0.1/::1/0.0.0.0 are allowed over HTTP. Use HTTPS for all non-loopback targets including VPC addresses.
+- `SENSITIVE_KEYS` regex expanded — now redacts `bearerToken`, `jwt`, `apiSecret`, `passwd`, and `authKey` in addition to existing patterns
+
+### Added
+- `loadStoredCredentials` warns when `~/.uluops/credentials.json` has world-readable permissions on Unix (mode & 0o044)
+- `loadStoredCredentials` validates field formats before returning — rejects invalid apiKey prefix, empty sessionToken, empty email
+- `JwtSessionAuth` constructor validates `initialToken` is structurally valid JWT (three dot-delimited segments)
+
 ## [0.5.3] - 2026-05-18
 
 ### Fixed

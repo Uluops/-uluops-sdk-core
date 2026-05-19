@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.1.1**
+**Current version: 0.5.4**
 
 ## Quick Start
 
@@ -329,7 +329,7 @@ const error = new NotFoundError('Item not found', { id: '123', apiKey: 'ulr_secr
 console.log(JSON.stringify(error));
 // { "name": "SdkApiError", "code": "NOT_FOUND", "statusCode": 404,
 //   "message": "Item not found", "details": { "id": "123", "apiKey": "[REDACTED]" } }
-// Note: keys matching sensitive patterns (apiKey, token, secret, etc.) are automatically redacted
+// Note: keys matching sensitive patterns (apiKey, token, secret, jwt, passwd, etc.) are automatically redacted
 ```
 
 ---
@@ -394,7 +394,9 @@ import { loadStoredCredentials, getCredentialsPath } from '@uluops/sdk-core/conf
 // Path: ~/.uluops/credentials.json
 console.log(getCredentialsPath());
 
-// Load from stored file (returns undefined if not found)
+// Load from stored file (returns null if not found or invalid)
+// Warns if file permissions are world-readable on Unix systems
+// Validates field formats (apiKey prefix, non-empty sessionToken/email)
 const stored = loadStoredCredentials();
 ```
 

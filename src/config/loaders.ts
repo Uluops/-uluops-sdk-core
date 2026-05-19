@@ -5,9 +5,9 @@
  * via the EnvVarConfig parameter.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { config as loadDotenv } from 'dotenv';
 import { CONFIG_PATHS, API_KEY_PREFIX } from './constants.js';
 import { ValidationError } from '../errors/errors.js';
@@ -144,6 +144,22 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
   }
 
   try {
+    // Check file permissions on Unix-like systems — warn if world-readable
+    if (platform() !== 'win32') {
+      try {
+        const stat = statSync(credPath);
+        const mode = stat.mode & 0o777;
+        if (mode & 0o044) {
+          console.warn(
+            `[sdk-core] Warning: ${credPath} is readable by other users (mode ${mode.toString(8)}). ` +
+            'Run: chmod 600 ~/.uluops/credentials.json'
+          );
+        }
+      } catch {
+        // stat failed — proceed with read attempt
+      }
+    }
+
     const content = readFileSync(credPath, 'utf-8');
     const parsed: unknown = JSON.parse(content);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -164,11 +180,31 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
       }
     }
 
-    return {
-      apiKey: profileCreds.apiKey,
-      sessionToken: profileCreds.sessionToken,
-      email: profileCreds.email,
-    };
+    // Validate field types before returning
+    const result: Partial<Credentials> = {};
+    if (profileCreds.apiKey !== undefined) {
+      if (typeof profileCreds.apiKey !== 'string' || !profileCreds.apiKey.startsWith(API_KEY_PREFIX)) {
+        console.warn('[sdk-core] Warning: credentials.json contains invalid apiKey format, ignoring');
+      } else {
+        result.apiKey = profileCreds.apiKey;
+      }
+    }
+    if (profileCreds.sessionToken !== undefined) {
+      if (typeof profileCreds.sessionToken !== 'string' || profileCreds.sessionToken.length === 0) {
+        console.warn('[sdk-core] Warning: credentials.json contains invalid sessionToken, ignoring');
+      } else {
+        result.sessionToken = profileCreds.sessionToken;
+      }
+    }
+    if (profileCreds.email !== undefined) {
+      if (typeof profileCreds.email !== 'string' || profileCreds.email.length === 0) {
+        console.warn('[sdk-core] Warning: credentials.json contains invalid email, ignoring');
+      } else {
+        result.email = profileCreds.email;
+      }
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
   } catch (error) {
     // Credentials file exists but can't be parsed — warn the user so they know
     // their config is corrupt, then fall through to other credential sources.
