@@ -211,7 +211,7 @@ describe('loadStoredCredentials()', () => {
 
     expect(loadStoredCredentials()).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain('EACCES');
+    expect(warnSpy.mock.calls[0][0]).toContain('could not read credentials file');
     warnSpy.mockRestore();
   });
 });

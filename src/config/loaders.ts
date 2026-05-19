@@ -151,7 +151,7 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
         const mode = stat.mode & 0o777;
         if (mode & 0o044) {
           console.warn(
-            `[sdk-core] Warning: ${credPath} is readable by other users (mode ${mode.toString(8)}). ` +
+            `[sdk-core] Warning: credentials file is readable by other users (mode ${mode.toString(8)}). ` +
             'Run: chmod 600 ~/.uluops/credentials.json'
           );
         }
@@ -208,10 +208,11 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
   } catch (error) {
     // Credentials file exists but can't be parsed — warn the user so they know
     // their config is corrupt, then fall through to other credential sources.
-    const reason = error instanceof Error ? error.message : String(error);
+    // Avoid leaking file path or parse error details (could contain file content).
+    const reason = error instanceof Error ? error.constructor.name : 'unknown error';
     console.warn(
-      `[sdk-core] Warning: could not read credentials from ${credPath}: ${reason}. ` +
-      'Falling back to environment variables.'
+      `[sdk-core] Warning: could not read credentials file (${reason}). ` +
+      'Check ~/.uluops/credentials.json is valid JSON. Falling back to environment variables.'
     );
     return null;
   }
