@@ -5,6 +5,12 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-05-19
+
+### Fixed
+- Credential file warning no longer leaks absolute file path — replaced `${credPath}` with generic "credentials file" in permission warning
+- Parse error warning no longer leaks file path or error content — uses `error.constructor.name` instead of `error.message` to prevent file content snippets in console output
+
 ## [0.5.4] - 2026-05-19
 
 ### Changed
