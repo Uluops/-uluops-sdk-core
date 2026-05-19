@@ -125,10 +125,17 @@ describe('JwtSessionAuth', () => {
       expect(auth.canRefresh()).toBe(true);
     });
 
-    it('should reject non-JWT format initialToken', () => {
+    it('should accept opaque (non-JWT) session tokens', () => {
       const client = makeFetchClient();
-      expect(() => new JwtSessionAuth(client, credentials, undefined, 'not-a-jwt'))
-        .toThrow('Invalid session token format');
+      const auth = new JwtSessionAuth(client, credentials, undefined, 'av-QRnQeIGeowkg5vkKQIWhE9bxCOWB8U-ZQjbegMkQ');
+      expect(auth.isAuthenticated()).toBe(true);
+      expect(auth.getAuthorizationHeader()).toBe('Bearer av-QRnQeIGeowkg5vkKQIWhE9bxCOWB8U-ZQjbegMkQ');
+    });
+
+    it('should reject empty string initialToken', () => {
+      const client = makeFetchClient();
+      expect(() => new JwtSessionAuth(client, credentials, undefined, ''))
+        .toThrow('Invalid session token');
     });
   });
 

@@ -5,6 +5,11 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-05-19
+
+### Fixed
+- `JwtSessionAuth` constructor no longer rejects opaque (non-JWT) session tokens — the tracker API issues `base64url` tokens, not JWTs. The v0.5.4 structural validation (`split('.').length !== 3`) caused `ValidationError` (400) on every authenticated dashboard request. Now accepts any non-empty string; token format is a server concern.
+
 ## [0.5.7] - 2026-05-19
 
 ### Fixed

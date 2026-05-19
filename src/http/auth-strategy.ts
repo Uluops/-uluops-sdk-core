@@ -131,10 +131,10 @@ export class JwtSessionAuth implements AuthStrategy {
     clearCredentialsAfterLogin = true,
   ) {
     if (initialToken !== undefined) {
-      // Lightweight JWT structural check — three dot-delimited segments
-      if (typeof initialToken !== 'string' || initialToken.split('.').length !== 3) {
+      // Accept any non-empty string — the server may issue JWTs or opaque tokens
+      if (typeof initialToken !== 'string' || initialToken.length === 0) {
         throw new ValidationError(
-          'Invalid session token format. Expected a JWT (three dot-delimited segments).',
+          'Invalid session token: must be a non-empty string.',
           { field: 'sessionToken' }
         );
       }
