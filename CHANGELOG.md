@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.4] - 2026-05-19
 
 ### Changed
-- **BREAKING**: `validateBaseUrl` no longer permits HTTP to private network ranges (10.x, 192.168.x, 172.16-31.x). Only localhost/127.0.0.1/::1/0.0.0.0 are allowed over HTTP. Use HTTPS for all non-loopback targets including VPC addresses.
 - `SENSITIVE_KEYS` regex expanded — now redacts `bearerToken`, `jwt`, `apiSecret`, `passwd`, and `authKey` in addition to existing patterns
 
 ### Added
