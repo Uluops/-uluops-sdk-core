@@ -279,7 +279,15 @@ export class HttpClient {
    */
   private async attemptTokenRefresh(error: Error): Promise<boolean> {
     if (!(error instanceof UnauthorizedError)) return false;
-    if (!this.authStrategy?.canRefresh()) return false;
+    if (!this.authStrategy?.canRefresh()) {
+      if (this.authStrategy?.getType() === 'session') {
+        this.logger.debug(
+          'Token refresh skipped — credentials were cleared after login (CWE-316 mitigation). ' +
+          'Set clearCredentialsAfterLogin: false for long-lived sessions that need automatic re-authentication.'
+        );
+      }
+      return false;
+    }
 
     try {
       this.logger.debug('Token expired, attempting refresh...');
@@ -491,8 +499,13 @@ export class HttpClient {
   /**
    * Make a request that returns the full response (for non-standard responses).
    *
-   * **Note:** This method does not include automatic retry, token refresh on 401,
-   * or rate limit header parsing. Use {@link request} for those features.
+   * **⚠️ No resilience features.** Unlike {@link request}, this method bypasses:
+   * - **Retry with backoff** — transient 502/503/504 errors are not retried
+   * - **Token refresh on 401** — expired sessions are not automatically re-authenticated
+   * - **Rate limit tracking** — `Retry-After` headers are not parsed or respected
+   *
+   * Use this only for endpoints that return non-standard response envelopes.
+   * For standard API calls, prefer {@link request} which includes all resilience features.
    */
   async requestRaw<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -530,8 +543,13 @@ export class HttpClient {
   /**
    * Make a request that returns binary data (ArrayBuffer).
    *
-   * **Note:** This method does not include automatic retry, token refresh on 401,
-   * or rate limit header parsing. Use {@link request} for those features.
+   * **⚠️ No resilience features.** Unlike {@link request}, this method bypasses:
+   * - **Retry with backoff** — transient 502/503/504 errors are not retried
+   * - **Token refresh on 401** — expired sessions are not automatically re-authenticated
+   * - **Rate limit tracking** — `Retry-After` headers are not parsed or respected
+   *
+   * Use this only for binary downloads (e.g., avatar images).
+   * For standard API calls, prefer {@link request} which includes all resilience features.
    */
   async requestBinary(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
