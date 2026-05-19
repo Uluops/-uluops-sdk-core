@@ -5,6 +5,11 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-05-19
+
+### Added
+- `rawEnvelope` option on `request()` — returns full JSON body without unwrapping the `{ data: T }` envelope, while retaining retry, token refresh, and rate limit parsing. Enables callers to access sibling fields (e.g., `count` for pagination) alongside `data`.
+
 ## [0.5.5] - 2026-05-19
 
 ### Fixed

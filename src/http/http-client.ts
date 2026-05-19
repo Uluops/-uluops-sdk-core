@@ -207,6 +207,8 @@ export class HttpClient {
       headers?: Record<string, string>;
       schema?: ZodType<T>;
       skipAuth?: boolean;
+      /** Return the full JSON body without unwrapping the `{ data: T }` envelope */
+      rawEnvelope?: boolean;
     }
   ): Promise<T> {
     const maxAttempts = options?.retries ?? this.retries;
@@ -356,7 +358,7 @@ export class HttpClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean }
+    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean }
   ): Promise<T> {
     const url = this.buildRequestUrl(endpoint, method, data, options?.params);
 
@@ -404,6 +406,16 @@ export class HttpClient {
       if (!text) {
         // SAFETY: `as T` — empty body equivalent to 204; see above
         return undefined as T;
+      }
+
+      if (options?.rawEnvelope) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new SdkApiError(response.status, `Invalid JSON response from ${method} ${endpoint}`);
+        }
+        return parsed as T;
       }
 
       return this.parseJsonEnvelope<T>(text, response.status, method, endpoint);
