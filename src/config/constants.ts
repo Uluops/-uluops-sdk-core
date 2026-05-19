@@ -12,7 +12,7 @@
  * so this module can be imported in browser environments.
  * Keep in sync with package.json "version" field.
  */
-export const SDK_CORE_VERSION = '0.5.4';
+export const SDK_CORE_VERSION = '0.5.7';
 
 /**
  * Default request timeout in milliseconds

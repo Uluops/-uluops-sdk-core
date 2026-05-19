@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.5.4**
+**Current version: 0.5.7**
 
 ## Quick Start
 
@@ -191,11 +191,11 @@ const validated = await client.request<z.infer<typeof schema>>('GET', '/endpoint
   schema,
 });
 
-// Raw response (without { data: T } envelope unwrapping, no automatic retry)
+// ⚠️ Raw response — bypasses retry, token refresh, and rate limit tracking
 const raw = await client.requestRaw<MyRawType>('GET', '/endpoint');
 console.log(raw); // parsed JSON without envelope unwrapping
 
-// Binary response (no automatic retry — see requestBinary docs)
+// ⚠️ Binary response — same bypass as requestRaw
 const binary = await client.requestBinary('GET', '/files/report.pdf');
 console.log(binary.data, binary.contentType);
 ```
@@ -250,6 +250,9 @@ const auth = new JwtSessionAuth({
   password: 'password',
   httpClient: myFetchClient,          // For login/refresh requests
   onTokenRefresh: (token) => { /* save token */ },
+  // clearCredentialsAfterLogin: true (default) — zeroes password after first
+  // login for CWE-316 mitigation, but disables automatic token refresh.
+  // Set to false for long-lived sessions (MCP servers, daemons).
 });
 
 // Login happens automatically on first request

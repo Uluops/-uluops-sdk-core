@@ -5,6 +5,14 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-05-19
+
+### Fixed
+- `attemptTokenRefresh` now logs a debug message when refresh is skipped due to CWE-316 credential clearing — previously a 401 on a session with cleared credentials produced a generic `UnauthorizedError` with no indication that the SDK intentionally discarded the password. The log message names the cause and recommends `clearCredentialsAfterLogin: false` for long-lived sessions.
+
+### Changed
+- `requestRaw` and `requestBinary` JSDoc now explicitly lists the three resilience features they bypass (retry with backoff, token refresh on 401, rate limit tracking) with guidance to prefer `request()` for standard API calls
+
 ## [0.5.6] - 2026-05-19
 
 ### Added
