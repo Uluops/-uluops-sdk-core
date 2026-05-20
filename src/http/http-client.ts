@@ -649,7 +649,7 @@ export class HttpClient {
    * @param options - skipAuth to bypass auth, schema for validation
    * @returns Parsed response body of type T
    */
-  async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
+  async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
     return this.request<T>('DELETE', endpoint, data, options);
   }
 
