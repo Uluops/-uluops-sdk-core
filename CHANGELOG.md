@@ -5,6 +5,20 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-05-20
+
+### Added
+- **`onRateLimitApproaching` callback** — new `HttpClientConfig` option fires when rate limit remaining drops below a configurable threshold (default: 10%). Fires at most once per threshold crossing, resets when remaining recovers. Enables proactive throttling before hitting 429.
+- **`rateLimitThreshold`** — configurable ratio (0–1) for the rate limit callback trigger (default: 0.1)
+
+### Changed
+- **`NetworkError` is now retryable** — `isRetryable()` returns `true`, so transient DNS failures, connection resets, and ECONNREFUSED are automatically retried with exponential backoff. Previously, network errors were terminal regardless of retry config.
+
+## [0.7.0] - 2026-05-19
+
+### Changed
+- **Token refresh failure message enriched** — when `attemptTokenRefresh` fails due to CWE-316 credential clearing, the `UnauthorizedError` message now includes actionable guidance (call `login()` again). Surfaced at error level instead of debug-only.
+
 ## [0.6.0] - 2026-05-19
 
 ### Added

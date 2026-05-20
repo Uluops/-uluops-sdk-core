@@ -413,6 +413,7 @@ export class HttpClient {
 
       this.logger.debug(`${method} ${endpoint} -> ${response.status}`);
       this.lastRateLimitInfo = parseRateLimitHeaders(response.headers);
+      this.checkRateLimitThreshold();
 
       if (!response.ok) {
         if (response.status === 401 && !this.authStrategy) {
@@ -670,6 +671,26 @@ export class HttpClient {
   getRateLimitInfo(): RateLimitInfo | null {
     if (!this.lastRateLimitInfo) return null;
     return { ...this.lastRateLimitInfo };
+  }
+
+  /**
+   * Fire onRateLimitApproaching when remaining/limit drops below threshold.
+   * Resets the flag when remaining recovers above threshold.
+   */
+  private checkRateLimitThreshold(): void {
+    if (!this.onRateLimitApproaching || !this.lastRateLimitInfo) return;
+    const { remaining, limit } = this.lastRateLimitInfo;
+    if (limit <= 0) return;
+
+    const ratio = remaining / limit;
+    if (ratio <= this.rateLimitThreshold) {
+      if (!this.rateLimitWarningFired) {
+        this.rateLimitWarningFired = true;
+        this.onRateLimitApproaching({ ...this.lastRateLimitInfo });
+      }
+    } else {
+      this.rateLimitWarningFired = false;
+    }
   }
 
   /**
