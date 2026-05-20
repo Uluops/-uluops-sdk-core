@@ -153,6 +153,13 @@ const client = new HttpClient({
   debug: false,                            // Enable debug logging
   defaultHeaders: { 'X-Custom': 'value' }, // Extra default headers
   onTokenRefresh: (token) => { /* ... */ },// Token refresh callback
+  onRateLimitApproaching: (info) => {      // Fires when remaining < threshold
+    console.warn(`${info.remaining}/${info.limit} remaining`);
+  },
+  rateLimitThreshold: 0.1,                 // Threshold ratio (default: 0.1)
+  onRetry: ({ attempt, maxAttempts, error, delayMs }) => {
+    console.warn(`Retry ${attempt}/${maxAttempts} in ${delayMs}ms`);
+  },
 });
 ```
 
@@ -213,12 +220,14 @@ if (info) {
 
 #### Automatic Retries
 
-The client automatically retries on transient errors (502, 503, 504, 429) with exponential backoff and jitter:
+The client automatically retries on transient errors (502, 503, 504, 429) and network failures (DNS, connection reset, ECONNREFUSED) with exponential backoff and jitter:
 
 - **GET requests**: Always retried (up to `retries` attempts)
 - **Mutations (POST/PUT/DELETE)**: Only retried when `retryMutations: true`
+- **Network errors**: Always retried (transient by nature)
 - **Backoff**: Exponential with jitter (base: 1s, max: 30s)
 - **401 handling**: Automatic token refresh with deduplication (one refresh at a time)
+- **Visibility**: Use `onRetry` callback to observe retry attempts in real time
 
 ---
 
@@ -292,7 +301,7 @@ All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`,
 | `UnprocessableError` | 422 | Valid syntax but invalid semantics |
 | `RateLimitError` | 429 | Too many requests (`retryAfter` property) |
 | `ServiceUnavailableError` | 503 | Server temporarily down (`retryAfter` property) |
-| `NetworkError` | 0 | DNS failure, connection refused |
+| `NetworkError` | 0 | DNS failure, connection refused (auto-retried) |
 | `TimeoutError` | 0 | Request exceeded timeout |
 
 #### Error Factory
