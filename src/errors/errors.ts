@@ -178,6 +178,14 @@ export class NetworkError extends SdkApiError {
     super(0, `${hint} (${message})`, ERROR_CODES.NETWORK_ERROR, baseUrl ? { baseUrl } : undefined);
     this.name = 'NetworkError';
   }
+
+  /**
+   * Network errors are retryable — transient DNS failures, connection resets,
+   * and ECONNREFUSED are all potentially recoverable on retry.
+   */
+  override isRetryable(): boolean {
+    return true;
+  }
 }
 
 /**
@@ -186,7 +194,7 @@ export class NetworkError extends SdkApiError {
 export class TimeoutError extends SdkApiError {
   constructor(timeoutMs: number) {
     super(
-      0,
+      -1,
       `Request timed out after ${timeoutMs}ms. Consider increasing timeout with { timeout: ${Math.max(timeoutMs * 2, 60000)} } or check network connectivity.`,
       ERROR_CODES.TIMEOUT,
       { timeoutMs }
@@ -198,13 +206,13 @@ export class TimeoutError extends SdkApiError {
 /**
  * API returned a successful HTTP response but the body did not match the expected schema.
  * This is a contract violation, not a transient error — retrying will produce the same shape.
- * Uses statusCode: 0 to indicate a client-side error (isRetryable() returns false).
+ * Uses statusCode: -2 to distinguish from NetworkError (0) and TimeoutError (-1).
  */
 export class ResponseValidationError extends SdkApiError {
   constructor(endpoint: string, issues: Array<{ path: PropertyKey[]; message: string }>) {
     const fields = issues.map(i => i.path.map(String).join('.')).join(', ');
     super(
-      0,
+      -2,
       `API response validation failed on ${endpoint}: unexpected shape on fields [${fields}]`,
       ERROR_CODES.RESPONSE_VALIDATION_ERROR,
       { endpoint, issues }

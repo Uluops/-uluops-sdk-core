@@ -217,7 +217,7 @@ describe('NetworkError', () => {
 describe('TimeoutError', () => {
   it('should include timeout ms and suggest doubling', () => {
     const err = new TimeoutError(5000);
-    expect(err.statusCode).toBe(0);
+    expect(err.statusCode).toBe(-1);
     expect(err.code).toBe(ERROR_CODES.TIMEOUT);
     expect(err.name).toBe('TimeoutError');
     expect(err.message).toContain('5000ms');

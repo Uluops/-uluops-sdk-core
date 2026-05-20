@@ -5,14 +5,8 @@
  * are NOT included here — each SDK defines those in its own constants file.
  */
 
-/**
- * sdk-core package version
- *
- * Hardcoded instead of reading package.json via createRequire(node:module)
- * so this module can be imported in browser environments.
- * Keep in sync with package.json "version" field.
- */
-export const SDK_CORE_VERSION = '0.7.0';
+// Re-export version from build-generated file (no manual sync needed)
+export { SDK_CORE_VERSION } from './generated-version.js';
 
 /**
  * Default request timeout in milliseconds

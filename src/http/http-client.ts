@@ -57,6 +57,17 @@ export interface HttpClientConfig {
   password?: string;
   sessionToken?: string;
   onTokenRefresh?: (token: string) => void;
+  /**
+   * Called when the rate limit remaining drops below the threshold ratio.
+   * Fires at most once per threshold crossing (resets when remaining recovers).
+   * @param info - Current rate limit state from response headers
+   */
+  onRateLimitApproaching?: (info: RateLimitInfo) => void;
+  /**
+   * Ratio of remaining/limit below which `onRateLimitApproaching` fires.
+   * Default: 0.1 (10% remaining).
+   */
+  rateLimitThreshold?: number;
 }
 
 /**
@@ -110,10 +121,15 @@ export class HttpClient {
   private readonly defaultHeaders: Record<string, string>;
   private lastRateLimitInfo: RateLimitInfo | null = null;
   private refreshPromise: Promise<void> | null = null;
+  private readonly onRateLimitApproaching?: (info: RateLimitInfo) => void;
+  private readonly rateLimitThreshold: number;
+  private rateLimitWarningFired = false;
 
   constructor(config: HttpClientConfig) {
     this.logger = createLogger(config.loggerPrefix, config.debug ?? false);
     this.retries = config.retries ?? DEFAULT_RETRY_COUNT;
+    this.onRateLimitApproaching = config.onRateLimitApproaching;
+    this.rateLimitThreshold = config.rateLimitThreshold ?? 0.1;
     this.baseUrl = config.baseUrl;
     this.authBaseUrl = config.authBaseUrl ?? config.baseUrl;
     HttpClient.validateBaseUrl(this.baseUrl);
@@ -235,7 +251,7 @@ export class HttpClient {
 
         if (this.shouldRetryTransient(lastError, canRetry, attempt, maxAttempts)) {
           const delay = this.calculateBackoffWithRetryAfter(lastError, attempt);
-          this.logger.debug(`Attempt ${attempt}/${maxAttempts} failed, retrying after ${delay}ms`);
+          this.logger.warn(`Attempt ${attempt}/${maxAttempts} failed (${lastError.message}), retrying after ${delay}ms`);
           await sleep(delay);
           continue;
         }
