@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.5.7**
+**Current version: 0.6.0**
 
 ## Quick Start
 
@@ -101,7 +101,7 @@ This package extracts the shared infrastructure that was duplicated across `@ulu
 - **Authentication**: API key and JWT session strategies with automatic token refresh
 - **Error Hierarchy**: 10 typed error classes mapped to HTTP status codes, plus type guard functions
 - **Configuration**: Credential chain loader (constructor > env vars > .env files > stored credentials)
-- **Utilities**: Logger with sensitive data redaction, retry with exponential backoff, rate limit header parsing
+- **Utilities**: Logger with sensitive data redaction (object-level and string-level), retry with exponential backoff, rate limit header parsing
 
 ## Prerequisites
 
@@ -455,17 +455,22 @@ const silent = createLogger('[my-sdk]', false);
 #### Sensitive Data Redaction
 
 ```typescript
-import { redactSensitive, sanitizeForLog, sanitizeForDisplay } from '@uluops/sdk-core/utils';
+import { redactSensitive, sanitizeForLog, sanitizeForDisplay, sanitizeString } from '@uluops/sdk-core/utils';
 
 // Redact showing last 4 chars
 redactSensitive('ulr_secret_key_12345678', 4); // '***5678'
 
-// Sanitize a value for logging (redacts strings matching sensitive patterns)
-sanitizeForLog('ulr_secret_key_12345678'); // '[REDACTED]'
+// Sanitize an object for logging (redacts sensitive keys in structured data)
+sanitizeForLog({ apiKey: 'ulr_...', name: 'safe' });
+// { apiKey: '[REDACTED]', name: 'safe' }
 
 // Sanitize an object for display (deep, strips sensitive keys)
 sanitizeForDisplay({ apiKey: 'ulr_...', name: 'safe' });
 // { apiKey: '[REDACTED]', name: 'safe' }
+
+// Sanitize a string (redacts credential values in free-form text)
+sanitizeString('Login failed with apiKey=ulr_abc123def456');
+// 'Login failed with [REDACTED]'
 ```
 
 #### Retry with Backoff
@@ -521,7 +526,7 @@ const info: RateLimitInfo | undefined = parseRateLimitHeaders(headers);
 | `@uluops/sdk-core/http` | `HttpClient`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy` |
 | `@uluops/sdk-core/errors` | `SdkApiError` + all error subclasses, `createErrorFromStatus`, type guards |
 | `@uluops/sdk-core/config` | `loadCredentials`, `loadConfig`, constants, `EnvVarConfig` |
-| `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sleep`, `retry`, `toQuery` |
+| `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sanitizeString`, `sleep`, `retry`, `toQuery` |
 
 ## Extending for Your SDK
 

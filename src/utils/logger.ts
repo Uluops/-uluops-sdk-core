@@ -131,6 +131,61 @@ export function createLogger(prefix: string, enabled: boolean): Logger {
 }
 
 /**
+ * Patterns that match credential values embedded in free-form strings.
+ *
+ * Complements SENSITIVE_KEYS (which redacts by object key name) —
+ * this catches credentials in error messages, URLs, and log output
+ * where the value appears inline rather than in a structured field.
+ */
+const CREDENTIAL_VALUE_PATTERNS: RegExp[] = [
+  // API key/token assignments: apiKey=xxx, api_key: xxx
+  /(?:api[_-]?key|apiKey)\s*[:=]\s*\S+/gi,
+  // Bearer tokens in auth headers
+  /bearer\s+[a-zA-Z0-9_\-.]+/gi,
+  // Authorization header values (Basic xxx, Bearer xxx, etc.)
+  /authorization:\s*\S+(?:\s+\S+)?/gi,
+  // UluOps API keys (ulr_ prefix with 20+ chars)
+  /ulr_[a-zA-Z0-9]{20,}/g,
+  // Token/secret/password assignments with values
+  /(?:token|secret|password|passwd)\s*[:=]\s*\S+/gi,
+  // Stack traces (internal implementation details)
+  /at\s+\S+\s+\(\S+:\d+:\d+\)/g,
+];
+
+/**
+ * Sanitize a string by redacting credential values and truncating.
+ *
+ * String-level complement to `sanitizeForLog` (object-level) and
+ * `sanitizeForDisplay` (object-level). Use this for error messages,
+ * log output, and any free-form text that may contain embedded
+ * credentials before exposing to external consumers.
+ *
+ * @param message - The string to sanitize
+ * @param maxLength - Maximum output length (default: 1000). 0 = no limit.
+ * @returns The sanitized string with credential values replaced by [REDACTED]
+ *
+ * @example
+ * ```typescript
+ * import { sanitizeString } from '@uluops/sdk-core';
+ *
+ * const safe = sanitizeString('Login failed with apiKey=ulr_abc123def456');
+ * // => 'Login failed with [REDACTED]'
+ * ```
+ */
+export function sanitizeString(message: string, maxLength = 1000): string {
+  let safe = message;
+  for (const pattern of CREDENTIAL_VALUE_PATTERNS) {
+    // Reset lastIndex for global regexes (stateful across calls)
+    pattern.lastIndex = 0;
+    safe = safe.replace(pattern, '[REDACTED]');
+  }
+  if (maxLength > 0 && safe.length > maxLength) {
+    safe = safe.slice(0, maxLength) + '... (truncated)';
+  }
+  return safe;
+}
+
+/**
  * Redact sensitive values for safe logging.
  * Shows only the last N characters.
  */

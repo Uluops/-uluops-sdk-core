@@ -6,6 +6,7 @@ import {
   redactSensitive,
   sanitizeForDisplay,
   sanitizeForLog,
+  sanitizeString,
 } from '../src/utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -340,5 +341,83 @@ describe('sanitizeForLog()', () => {
     expect(result.apiKeyId).toBe('visible');
     expect(result.mytoken).toBe('visible');
     expect(result.passwordHash).toBe('visible');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeString()
+// ---------------------------------------------------------------------------
+describe('sanitizeString()', () => {
+  it('should redact apiKey=value patterns', () => {
+    expect(sanitizeString('Login failed with apiKey=ulr_abc123')).toBe('Login failed with [REDACTED]');
+  });
+
+  it('should redact api_key: value patterns', () => {
+    expect(sanitizeString('Config: api_key: sk_live_abc')).toBe('Config: [REDACTED]');
+  });
+
+  it('should redact bearer tokens', () => {
+    expect(sanitizeString('Header: bearer eyJhbGciOiJIUzI1NiJ9.test')).toBe('Header: [REDACTED]');
+  });
+
+  it('should redact authorization header values', () => {
+    expect(sanitizeString('authorization: Basic dXNlcjpwYXNz')).toBe('[REDACTED]');
+  });
+
+  it('should redact UluOps API keys (ulr_ prefix)', () => {
+    expect(sanitizeString('Using key ulr_abcdefghijklmnopqrstuvwxyz')).toBe('Using key [REDACTED]');
+  });
+
+  it('should redact token=value patterns', () => {
+    expect(sanitizeString('session token=abc123def456')).toBe('session [REDACTED]');
+  });
+
+  it('should redact password=value patterns', () => {
+    expect(sanitizeString('auth password=s3cret!')).toBe('auth [REDACTED]');
+  });
+
+  it('should redact stack traces', () => {
+    const input = 'Error occurred at Object.run (/app/src/index.ts:42:10)';
+    expect(sanitizeString(input)).toBe('Error occurred [REDACTED]');
+  });
+
+  it('should redact multiple patterns in one message', () => {
+    const input = 'Failed: apiKey=ulr_abcdefghijklmnopqrstuvwxyz, bearer my-token-123';
+    const result = sanitizeString(input);
+    expect(result).not.toContain('ulr_');
+    expect(result).not.toContain('my-token-123');
+  });
+
+  it('should preserve messages without credentials', () => {
+    expect(sanitizeString('Definition "test" not found in registry')).toBe('Definition "test" not found in registry');
+  });
+
+  it('should truncate at default maxLength (1000)', () => {
+    const long = 'a'.repeat(1500);
+    const result = sanitizeString(long);
+    expect(result.length).toBeLessThan(1020); // 1000 + '... (truncated)'
+    expect(result).toContain('... (truncated)');
+  });
+
+  it('should truncate at custom maxLength', () => {
+    const result = sanitizeString('a'.repeat(200), 50);
+    expect(result).toContain('... (truncated)');
+    expect(result.length).toBeLessThan(70);
+  });
+
+  it('should not truncate when maxLength is 0', () => {
+    const long = 'a'.repeat(5000);
+    expect(sanitizeString(long, 0)).toBe(long);
+  });
+
+  it('should handle empty string', () => {
+    expect(sanitizeString('')).toBe('');
+  });
+
+  it('should be idempotent (running twice produces same result)', () => {
+    const input = 'apiKey=secret123 and bearer tok_abc';
+    const once = sanitizeString(input);
+    const twice = sanitizeString(once);
+    expect(twice).toBe(once);
   });
 });

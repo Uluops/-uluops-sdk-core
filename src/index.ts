@@ -89,5 +89,6 @@ export {
   redactSensitive,
   sanitizeForDisplay,
   sanitizeForLog,
+  sanitizeString,
   type Logger,
 } from './utils/logger.js';

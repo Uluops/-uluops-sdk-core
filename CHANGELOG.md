@@ -5,6 +5,11 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-19
+
+### Added
+- **`sanitizeString(message, maxLength?)`** — string-level credential redaction for error messages, log output, and free-form text. Complements the existing object-level `sanitizeForLog`/`sanitizeForDisplay`. Redacts API keys (`apiKey=`, `ulr_*`), bearer tokens, authorization headers, token/password assignments, and stack traces. Truncates at 1000 chars by default. Exported from `@uluops/sdk-core` and `@uluops/sdk-core/utils`.
+
 ## [0.5.8] - 2026-05-19
 
 ### Fixed
