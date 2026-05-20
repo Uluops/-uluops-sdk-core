@@ -285,6 +285,11 @@ export class HttpClient {
           'Token refresh skipped — credentials were cleared after login (CWE-316 mitigation). ' +
           'Set clearCredentialsAfterLogin: false for long-lived sessions that need automatic re-authentication.'
         );
+        // Enrich the error message so users understand why refresh failed
+        if (error instanceof UnauthorizedError) {
+          error.message += ' (Session token expired and automatic refresh is unavailable — ' +
+            'credentials were cleared after login. Call login() again to re-authenticate.)';
+        }
       }
       return false;
     }
