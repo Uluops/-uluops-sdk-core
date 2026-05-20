@@ -1,7 +1,7 @@
 /**
  * HTTP client for UluOps APIs using native fetch
  *
- * Single class with config object pattern. Each SDK creates a thin subclass
+ * Single class with config object pattern. Each SDK creates a subclass
  * that passes SDK-specific defaults (baseUrl, sdkName, loggerPrefix, etc.).
  */
 
