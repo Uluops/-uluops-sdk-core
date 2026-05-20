@@ -68,6 +68,12 @@ export interface HttpClientConfig {
    * Default: 0.1 (10% remaining).
    */
   rateLimitThreshold?: number;
+  /**
+   * Called before each retry attempt. Receives the attempt number, max attempts,
+   * the error that triggered the retry, and the backoff delay in ms.
+   * Fires for both transient HTTP errors and network errors.
+   */
+  onRetry?: (info: { attempt: number; maxAttempts: number; error: Error; delayMs: number }) => void;
 }
 
 /**
@@ -124,12 +130,14 @@ export class HttpClient {
   private readonly onRateLimitApproaching?: (info: RateLimitInfo) => void;
   private readonly rateLimitThreshold: number;
   private rateLimitWarningFired = false;
+  private readonly onRetry?: (info: { attempt: number; maxAttempts: number; error: Error; delayMs: number }) => void;
 
   constructor(config: HttpClientConfig) {
     this.logger = createLogger(config.loggerPrefix, config.debug ?? false);
     this.retries = config.retries ?? DEFAULT_RETRY_COUNT;
     this.onRateLimitApproaching = config.onRateLimitApproaching;
     this.rateLimitThreshold = config.rateLimitThreshold ?? 0.1;
+    this.onRetry = config.onRetry;
     this.baseUrl = config.baseUrl;
     this.authBaseUrl = config.authBaseUrl ?? config.baseUrl;
     HttpClient.validateBaseUrl(this.baseUrl);
@@ -252,6 +260,7 @@ export class HttpClient {
         if (this.shouldRetryTransient(lastError, canRetry, attempt, maxAttempts)) {
           const delay = this.calculateBackoffWithRetryAfter(lastError, attempt);
           this.logger.warn(`Attempt ${attempt}/${maxAttempts} failed (${lastError.message}), retrying after ${delay}ms`);
+          this.onRetry?.({ attempt, maxAttempts, error: lastError, delayMs: delay });
           await sleep(delay);
           continue;
         }
