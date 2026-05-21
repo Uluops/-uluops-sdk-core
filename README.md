@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.6.0**
+**Current version: 0.10.0**
 
 ## Quick Start
 
