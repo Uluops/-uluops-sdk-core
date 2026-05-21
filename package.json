@@ -53,7 +53,7 @@
   ],
   "author": "UluOps <hello@uluops.ai>",
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   },
   "bugs": {
     "url": "https://github.com/uluops/uluops/issues"
