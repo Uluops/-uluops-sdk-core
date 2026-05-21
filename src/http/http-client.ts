@@ -100,10 +100,17 @@ function extractErrorBody(
   if (!isRecord(data) || !('error' in data)) return undefined;
   const error = data.error;
   if (!isRecord(error)) return undefined;
+  // API validation errors use `errors` (Zod issues), other errors use `details`
+  const details = isRecord(error.details)
+    ? error.details
+    : Array.isArray(error.errors)
+      ? { errors: error.errors }
+      : undefined;
+
   return {
     code: typeof error.code === 'string' ? error.code : undefined,
     message: typeof error.message === 'string' ? error.message : undefined,
-    details: isRecord(error.details) ? error.details : undefined,
+    details,
   };
 }
 
