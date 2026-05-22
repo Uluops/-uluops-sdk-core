@@ -5,6 +5,12 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-05-21
+
+### Fixed
+
+- **Suppress dotenv v17 tip noise** — `loadEnvFiles()` now passes `quiet: true` to dotenv, eliminating the `[dotenv@17.2.4] injecting env ... -- tip: ...` output on every CLI invocation
+
 ## [0.10.0] - 2026-05-20
 
 ### Changed

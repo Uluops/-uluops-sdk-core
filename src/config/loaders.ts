@@ -124,12 +124,12 @@ export function getCredentialsPath(): string {
 export function loadEnvFiles(): void {
   const localEnvPath = CONFIG_PATHS.LOCAL_ENV;
   if (existsSync(localEnvPath)) {
-    loadDotenv({ path: localEnvPath, override: false });
+    loadDotenv({ path: localEnvPath, override: false, quiet: true });
   }
 
   const globalEnvPath = join(homedir(), CONFIG_PATHS.GLOBAL_ENV);
   if (existsSync(globalEnvPath)) {
-    loadDotenv({ path: globalEnvPath, override: false });
+    loadDotenv({ path: globalEnvPath, override: false, quiet: true });
   }
 }
 
