@@ -77,11 +77,29 @@ export interface HttpClientConfig {
 }
 
 /**
- * Keys that should be stripped from error details to prevent leaking server internals
+ * Keys stripped from error details to prevent leaking server internals.
+ * Defense-in-depth: the API error handlers already sanitize responses,
+ * but this catches leakage through ApiError.details if a developer
+ * passes raw error fields through.
+ *
+ * Categories:
+ * - Stack traces: stack, trace, stackTrace
+ * - Database internals: query, sql, sqlMessage, sqlState, table, column,
+ *   constraint (MySQL/Postgres leakage via raw error passthrough)
+ * - System internals: errno, syscall, hostname, address, port, pid, path
+ * - Framework internals: internal, cause, original, source, raw
+ *
+ * Last reviewed: 2026-05-23 (expanded from v0.1.0 MySQL-only list)
  */
 const REDACTED_DETAIL_KEYS = new Set([
-  'stack', 'trace', 'stackTrace', 'internal', 'query', 'sql', 'sqlMessage',
-  'sqlState', 'errno', 'syscall', 'hostname', 'address',
+  // Stack traces
+  'stack', 'trace', 'stackTrace',
+  // Database internals (MySQL, Postgres, SQLite)
+  'query', 'sql', 'sqlMessage', 'sqlState', 'table', 'constraint',
+  // System/OS internals
+  'errno', 'syscall', 'hostname', 'address', 'port', 'pid', 'path',
+  // Framework/error-chain internals
+  'internal', 'cause', 'original', 'source', 'raw',
 ]);
 
 /**
