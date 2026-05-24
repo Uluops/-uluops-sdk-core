@@ -227,12 +227,12 @@ describe('sanitizeForDisplay()', () => {
     expect(items[1].name).toBe('b');
   });
 
-  it('should preserve non-string sensitive values (only redacts strings)', () => {
+  it('should redact sensitive values regardless of type', () => {
     const input = { api_key: 12345, token: true };
     const result = sanitizeForDisplay(input);
-    // sanitizeForDisplay only redacts string values for sensitive keys
-    expect(result.api_key).toBe(12345);
-    expect(result.token).toBe(true);
+    // sanitizeForDisplay redacts all sensitive keys, not just string values
+    expect(result.api_key).toBe('[REDACTED]');
+    expect(result.token).toBe('[REDACTED]');
   });
 
   it('should handle arrays with primitives', () => {

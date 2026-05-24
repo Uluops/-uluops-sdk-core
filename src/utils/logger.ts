@@ -76,7 +76,7 @@ export function sanitizeForDisplay(obj: Record<string, unknown>, seen = new Weak
           ? sanitizeForDisplay(item as Record<string, unknown>, seen)
           : item
       );
-    } else if (SENSITIVE_KEYS.test(key) && typeof value === 'string') {
+    } else if (SENSITIVE_KEYS.test(key)) {
       result[key] = '[REDACTED]';
     } else {
       result[key] = value;

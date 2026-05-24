@@ -272,13 +272,24 @@ export class HttpClient {
           continue;
         }
 
-        // Token refresh retry: a 401 means the server rejected the request
-        // *before processing it* (stale auth). Retrying after refresh is safe
-        // for all methods including mutations, so we intentionally skip the
-        // retryMutations check here.
+        // Token refresh: attempt to refresh the token on 401 errors.
+        // For GET requests, retry automatically after refresh.
+        // For mutations (POST/PUT/PATCH/DELETE), only retry after refresh
+        // if retryMutations is enabled — a server that partially processes
+        // before returning 401 would cause silent double-execution.
         if (!refreshAttempted && await this.attemptTokenRefresh(lastError)) {
           refreshAttempted = true;
-          continue;
+          if (canRetry) {
+            continue;
+          }
+          // Mutation without retryMutations: refresh succeeded but we
+          // don't retry the request — caller should handle the retry
+          // decision for non-idempotent operations.
+          this.logger.warn(
+            `Token refreshed but ${method} ${endpoint} not retried (mutation). ` +
+            `Set retryMutations: true for idempotent mutation endpoints.`
+          );
+          throw lastError;
         }
 
         throw lastError;
@@ -317,11 +328,13 @@ export class HttpClient {
           'Token refresh skipped — credentials were cleared after login (CWE-316 mitigation). ' +
           'Set clearCredentialsAfterLogin: false for long-lived sessions that need automatic re-authentication.'
         );
-        // Enrich the error message so users understand why refresh failed
-        if (error instanceof UnauthorizedError) {
-          error.message += ' (Session token expired and automatic refresh is unavailable — ' +
-            'credentials were cleared after login. Call login() again to re-authenticate.)';
-        }
+        // Throw a new error with enriched context rather than mutating the
+        // original — direct message mutation bypasses sanitizeForDisplay in
+        // toJSON(), which only sanitizes the details field.
+        throw new UnauthorizedError(
+          'Session token expired and automatic refresh is unavailable — ' +
+          'credentials were cleared after login. Call login() again to re-authenticate.'
+        );
       }
       return false;
     }
