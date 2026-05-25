@@ -7,7 +7,7 @@
  */
 
 import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
-import { sanitizeForDisplay } from '../utils/logger.js';
+import { sanitizeForDisplay, sanitizeString } from '../utils/logger.js';
 
 /**
  * Base API error class for all UluOps SDK errors
@@ -45,7 +45,7 @@ export class SdkApiError extends Error {
   toJSON(): Record<string, unknown> {
     return {
       name: this.name,
-      message: this.message,
+      message: sanitizeString(this.message, 0),
       statusCode: this.statusCode,
       code: this.code,
       details: this.details ? sanitizeForDisplay(this.details) : undefined,

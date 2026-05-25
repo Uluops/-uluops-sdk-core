@@ -168,7 +168,10 @@ export class JwtSessionAuth implements AuthStrategy {
       return loginData.sessionToken;
     } finally {
       // CWE-316: clear plaintext password from memory after first login attempt
-      // (success or failure) to prevent credential retention on refresh errors
+      // (success or failure) to prevent credential retention on refresh errors.
+      // Note: JavaScript has no memset/secure-zero equivalent — the old string
+      // remains on the V8 heap until GC reclaims it. Setting to empty string is
+      // the best available userland mitigation; true clearance requires native bindings.
       if (this.clearAfterLogin && !this.credentialsCleared) {
         this.credentials = { email: this.credentials.email, password: '' };
         this.credentialsCleared = true;

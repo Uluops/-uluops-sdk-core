@@ -89,6 +89,12 @@ export interface HttpClientConfig {
  * - System internals: errno, syscall, hostname, address, port, pid, path
  * - Framework internals: internal, cause, original, source, raw
  *
+ * This is defense-in-depth: the API error handlers already sanitize responses
+ * server-side. This client-side list catches leakage through ApiError.details
+ * if a developer passes raw error fields through. A static list will miss keys
+ * from new ORMs or frameworks — accept this tradeoff over pattern-matching
+ * heuristics that risk false positives on legitimate detail fields.
+ *
  * Last reviewed: 2026-05-23 (expanded from v0.1.0 MySQL-only list)
  */
 const REDACTED_DETAIL_KEYS = new Set([
@@ -847,6 +853,12 @@ export class HttpClient {
   /**
    * Validate that a base URL uses HTTPS for non-loopback targets.
    * Prevents SSRF via environment variable injection and cleartext credential transmission.
+   *
+   * Scope: validates the configured origin only, not per-request destinations.
+   * This is sufficient because runtime URLs are constructed via buildUrl() which
+   * concatenates this validated baseUrl with SDK-controlled endpoint path literals
+   * (e.g., '/auth/login', '/definitions/:type/:name'). No consumer-supplied strings
+   * reach URL construction, so destination-level SSRF is not possible through the SDK.
    */
   private static validateBaseUrl(url: string): void {
     try {
