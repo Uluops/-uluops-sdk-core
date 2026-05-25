@@ -931,3 +931,129 @@ describe('getRateLimitInfo() without prior request', () => {
     expect(client.getRateLimitInfo()).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateBaseUrl (SSRF prevention)
+// ---------------------------------------------------------------------------
+describe('validateBaseUrl', () => {
+  it('should accept HTTPS URLs', () => {
+    expect(() => makeClient({ baseUrl: 'https://api.uluops.com/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for localhost', () => {
+    expect(() => makeClient({ baseUrl: 'http://localhost:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for 127.0.0.1', () => {
+    expect(() => makeClient({ baseUrl: 'http://127.0.0.1:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for ::1', () => {
+    expect(() => makeClient({ baseUrl: 'http://[::1]:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for 10.x private networks', () => {
+    expect(() => makeClient({ baseUrl: 'http://10.0.1.5:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for 192.168.x private networks', () => {
+    expect(() => makeClient({ baseUrl: 'http://192.168.1.100:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should accept HTTP for 172.16-31.x private networks', () => {
+    expect(() => makeClient({ baseUrl: 'http://172.16.0.1:3100/api/v1' })).not.toThrow();
+    expect(() => makeClient({ baseUrl: 'http://172.31.255.255:3100/api/v1' })).not.toThrow();
+  });
+
+  it('should reject HTTP for public hosts', () => {
+    expect(() => makeClient({ baseUrl: 'http://api.example.com/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  it('should reject HTTP for public IP addresses', () => {
+    expect(() => makeClient({ baseUrl: 'http://8.8.8.8:3100/api/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  it('should reject HTTP for 172.x outside private range', () => {
+    expect(() => makeClient({ baseUrl: 'http://172.32.0.1:3100/api/v1' })).toThrow(/must use HTTPS/);
+    expect(() => makeClient({ baseUrl: 'http://172.15.0.1:3100/api/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  it('should reject invalid URLs', () => {
+    expect(() => makeClient({ baseUrl: 'not-a-url' })).toThrow(/Invalid baseUrl/);
+  });
+
+  it('should validate authBaseUrl separately', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      authBaseUrl: 'http://evil.com/auth',
+    })).toThrow(/must use HTTPS/);
+  });
+
+  it('should skip authBaseUrl validation when same as baseUrl', () => {
+    expect(() => makeClient({
+      baseUrl: 'http://localhost:3100/api/v1',
+    })).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 401 token refresh: mutation guard
+// ---------------------------------------------------------------------------
+describe('401 mutation guard', () => {
+  it('should NOT retry POST after token refresh without retryMutations', async () => {
+    // POST returns 401
+    nock(TEST_BASE_URL)
+      .post(apiPath('/create'))
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
+      .reply(401, { error: { message: 'expired' } });
+
+    // Login succeeds (refresh works)
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'))
+      .reply(200, { data: { sessionToken: 'fresh-tok', expiresAt: '2099-01-01' } });
+
+    // NO second POST interceptor — if the client retries, nock will error
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: TEST_JWT_STALE,
+      email: 'a@b.com',
+      password: 'pw',
+      retries: 3,
+      // retryMutations NOT set — default false
+    });
+
+    // Should throw the original 401, not retry the mutation
+    await expect(client.post('/create', { name: 'test' })).rejects.toThrow(UnauthorizedError);
+  });
+
+  it('should retry POST after token refresh WITH retryMutations', async () => {
+    // POST returns 401
+    nock(TEST_BASE_URL)
+      .post(apiPath('/create'))
+      .matchHeader('Authorization', `Bearer ${TEST_JWT_STALE}`)
+      .reply(401, { error: { message: 'expired' } });
+
+    // Login succeeds
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'))
+      .reply(200, { data: { sessionToken: 'fresh-tok', expiresAt: '2099-01-01' } });
+
+    // Retry with fresh token succeeds
+    nock(TEST_BASE_URL)
+      .post(apiPath('/create'))
+      .matchHeader('Authorization', 'Bearer fresh-tok')
+      .reply(200, { data: { id: '123' } });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: TEST_JWT_STALE,
+      email: 'a@b.com',
+      password: 'pw',
+      retries: 3,
+    });
+
+    const result = await client.post('/create', { name: 'test' }, { retryMutations: true });
+    expect(result).toEqual({ id: '123' });
+  });
+});

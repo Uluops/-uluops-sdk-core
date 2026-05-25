@@ -866,7 +866,7 @@ export class HttpClient {
       if (parsed.protocol === 'https:') return;
       // Allow HTTP for loopback and private network addresses (VPC, local dev)
       const host = parsed.hostname;
-      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0';
+      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '0.0.0.0';
       const isPrivate = host.startsWith('10.') ||
         host.startsWith('192.168.') ||
         /^172\.(1[6-9]|2\d|3[01])\./.test(host);

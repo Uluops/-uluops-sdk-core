@@ -287,6 +287,34 @@ describe('toJSON()', () => {
     expect(details.token).toBe('[REDACTED]');
     expect(details.safe).toBe('visible');
   });
+
+  it('should sanitize credential patterns in message', () => {
+    const err = new SdkApiError(500, 'Login failed with apiKey=ulr_realkey1234567890abcdef', 'X');
+    const json = err.toJSON();
+    expect(json.message).not.toContain('ulr_realkey1234567890abcdef');
+    expect(json.message).toContain('[REDACTED]');
+  });
+
+  it('should sanitize bearer tokens in message', () => {
+    const err = new SdkApiError(401, 'Invalid bearer eyJhbGciOiJIUzI1NiJ9.payload.sig');
+    const json = err.toJSON();
+    expect(json.message).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    expect(json.message).toContain('[REDACTED]');
+  });
+
+  it('should not truncate message during sanitization', () => {
+    const longMessage = 'Error: ' + 'x'.repeat(2000);
+    const err = new SdkApiError(500, longMessage);
+    const json = err.toJSON();
+    // sanitizeString called with maxLength=0 — no truncation
+    expect((json.message as string).length).toBeGreaterThan(1000);
+  });
+
+  it('should preserve clean messages unchanged', () => {
+    const err = new SdkApiError(404, 'Resource not found');
+    const json = err.toJSON();
+    expect(json.message).toBe('Resource not found');
+  });
 });
 
 // ---------------------------------------------------------------------------
