@@ -29,7 +29,8 @@ coverage/
 *.log
 npm-debug.log*
 
-docs
+docs/coverage
+docs/api
 
 # Claude Code context files (auto-generated, machine-local)
 **/CLAUDE.md
