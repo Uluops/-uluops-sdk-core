@@ -68,7 +68,9 @@ export function sanitizeForDisplay(obj: Record<string, unknown>, seen = new Weak
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (SENSITIVE_KEYS.test(key)) {
+      result[key] = '[REDACTED]';
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       result[key] = sanitizeForDisplay(value as Record<string, unknown>, seen);
     } else if (Array.isArray(value)) {
       result[key] = value.map((item) =>
@@ -76,8 +78,6 @@ export function sanitizeForDisplay(obj: Record<string, unknown>, seen = new Weak
           ? sanitizeForDisplay(item as Record<string, unknown>, seen)
           : item
       );
-    } else if (SENSITIVE_KEYS.test(key)) {
-      result[key] = '[REDACTED]';
     } else {
       result[key] = value;
     }

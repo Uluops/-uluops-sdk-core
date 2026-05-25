@@ -235,6 +235,13 @@ describe('sanitizeForDisplay()', () => {
     expect(result.token).toBe('[REDACTED]');
   });
 
+  it('should redact sensitive keys with object values (not recurse into them)', () => {
+    const input = { password: { hash: 'abc', salt: 'xyz' }, safe: 'visible' };
+    const result = sanitizeForDisplay(input);
+    expect(result.password).toBe('[REDACTED]');
+    expect(result.safe).toBe('visible');
+  });
+
   it('should handle arrays with primitives', () => {
     const input = { items: [1, 'two', true] };
     const result = sanitizeForDisplay(input);
