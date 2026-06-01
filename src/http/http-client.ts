@@ -5,7 +5,7 @@
  * that passes SDK-specific defaults (baseUrl, sdkName, loggerPrefix, etc.).
  */
 
-import { ZodError, type ZodType } from 'zod';
+import { isIP } from 'node:net';
 import {
   DEFAULT_TIMEOUT,
   DEFAULT_RETRY_COUNT,
@@ -16,7 +16,6 @@ import {
 } from '../config/constants.js';
 import {
   SdkApiError,
-  ResponseValidationError,
   createErrorFromStatus,
   NetworkError,
   TimeoutError,
@@ -176,6 +175,7 @@ export class HttpClient {
       HttpClient.validateBaseUrl(this.authBaseUrl);
     }
     this.timeout = config.timeout ?? DEFAULT_TIMEOUT;
+    HttpClient.validateHeaders(config.defaultHeaders);
     this.defaultHeaders = {
       'Content-Type': 'application/json',
       'User-Agent': `${config.sdkName}/${config.sdkVersion}`,
@@ -244,9 +244,18 @@ export class HttpClient {
    * @remarks
    * The generic parameter `T` is asserted at the JSON boundary, not validated
    * at runtime. This matches the convention used by axios, ky, and got. If you
-   * need runtime guarantees that the response matches `T`, pass a Zod schema
-   * via `options.schema` — the response will be parsed and any mismatch throws
-   * a ZodError before the value reaches your code.
+   * need runtime guarantees that the response matches `T`, parse the result
+   * yourself with a Zod schema after the call:
+   *
+   * ```ts
+   * const data = FooSchema.parse(await client.get<unknown>('/foo'));
+   * ```
+   *
+   * The SDK does not accept caller-supplied schemas. Earlier versions exposed
+   * an `options.schema` parameter that invoked `.parse()` internally; this was
+   * removed because the structural type accepted any object with a `parse`
+   * method, creating a code-execution primitive when the schema was supplied
+   * by an untrusted source. See CHANGELOG 0.11.0.
    *
    * **204 No Content:** Returns `undefined as T`. Callers expecting a 204
    * should type as `request<void>(...)` or handle the undefined case.
@@ -260,7 +269,6 @@ export class HttpClient {
       retries?: number;
       retryMutations?: boolean;
       headers?: Record<string, string>;
-      schema?: ZodType<T>;
       skipAuth?: boolean;
       /** Return the full JSON body without unwrapping the `{ data: T }` envelope */
       rawEnvelope?: boolean;
@@ -274,16 +282,6 @@ export class HttpClient {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const result = await this.doFetch<T>(method, endpoint, data, options);
-        if (options?.schema) {
-          try {
-            return options.schema.parse(result);
-          } catch (zodErr) {
-            if (zodErr instanceof ZodError) {
-              throw new ResponseValidationError(endpoint, zodErr.issues);
-            }
-            throw zodErr;
-          }
-        }
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error), { cause: error });
@@ -428,8 +426,9 @@ export class HttpClient {
       );
     }
     // SAFETY: `as T` — the generic is asserted at the JSON boundary, not validated
-    // at runtime. This matches the convention used by axios/ky/got. Use `options.schema`
-    // (Zod) for runtime type guarantees.
+    // at runtime. This matches the convention used by axios/ky/got. For runtime
+    // guarantees, callers should parse the result with a Zod schema themselves:
+    // `FooSchema.parse(await client.get<unknown>('/foo'))`.
     return responseData.data as T;
   }
 
@@ -586,7 +585,7 @@ export class HttpClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string>; schema?: ZodType<T> }
+    options?: { params?: object; headers?: Record<string, string> }
   ): Promise<T> {
     const params = method === 'GET' ? data : options?.params;
     const body = method !== 'GET' ? JSON.stringify(data) : undefined;
@@ -609,9 +608,6 @@ export class HttpClient {
       throw new SdkApiError(response.status, 'Invalid JSON response');
     }
 
-    if (options?.schema) {
-      return options.schema.parse(parsed);
-    }
     return parsed as T;
   }
 
@@ -646,21 +642,20 @@ export class HttpClient {
    * Send a GET request. Automatically retried on transient errors.
    * @param endpoint - API endpoint path (e.g. '/items')
    * @param params - Query parameters as key-value pairs
-   * @param options - Optional Zod schema for response validation
-   * @returns Parsed response body of type T
+   * @returns Response body of type T (unvalidated — parse with a Zod schema if needed)
    */
-  async get<T>(endpoint: string, params?: object, options?: { schema?: ZodType<T> }): Promise<T> {
-    return this.request<T>('GET', endpoint, params, options);
+  async get<T>(endpoint: string, params?: object): Promise<T> {
+    return this.request<T>('GET', endpoint, params);
   }
 
   /**
    * Send a POST request. Not retried by default (use `retryMutations` to opt in).
    * @param endpoint - API endpoint path
    * @param data - Request body
-   * @param options - skipAuth to bypass auth, retryMutations to enable retry, schema for validation
-   * @returns Parsed response body of type T
+   * @param options - skipAuth to bypass auth, retryMutations to enable retry
+   * @returns Response body of type T (unvalidated — parse with a Zod schema if needed)
    */
-  async post<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
+  async post<T>(endpoint: string, data?: object, options?: { skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
@@ -669,9 +664,9 @@ export class HttpClient {
    * @param endpoint - API endpoint path
    * @param data - Request body with partial update fields
    * @param options - params for query parameters, skipAuth to bypass auth
-   * @returns Parsed response body of type T
+   * @returns Response body of type T (unvalidated — parse with a Zod schema if needed)
    */
-  async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean; schema?: ZodType<T> }): Promise<T> {
+  async patch<T>(endpoint: string, data?: object, options?: { params?: object; skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 
@@ -679,10 +674,10 @@ export class HttpClient {
    * Send a PUT request. Not retried by default.
    * @param endpoint - API endpoint path
    * @param data - Request body
-   * @param options - skipAuth to bypass auth, schema for validation
-   * @returns Parsed response body of type T
+   * @param options - skipAuth to bypass auth
+   * @returns Response body of type T (unvalidated — parse with a Zod schema if needed)
    */
-  async put<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean }): Promise<T> {
+  async put<T>(endpoint: string, data?: object, options?: { skipAuth?: boolean }): Promise<T> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
@@ -690,10 +685,10 @@ export class HttpClient {
    * Send a DELETE request. Not retried by default.
    * @param endpoint - API endpoint path
    * @param data - Optional request body
-   * @param options - skipAuth to bypass auth, schema for validation
-   * @returns Parsed response body of type T
+   * @param options - skipAuth to bypass auth, retryMutations to enable retry
+   * @returns Response body of type T (unvalidated — parse with a Zod schema if needed)
    */
-  async delete<T>(endpoint: string, data?: object, options?: { schema?: ZodType<T>; skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
+  async delete<T>(endpoint: string, data?: object, options?: { skipAuth?: boolean; retryMutations?: boolean }): Promise<T> {
     return this.request<T>('DELETE', endpoint, data, options);
   }
 
@@ -859,21 +854,32 @@ export class HttpClient {
    * concatenates this validated baseUrl with SDK-controlled endpoint path literals
    * (e.g., '/auth/login', '/definitions/:type/:name'). No consumer-supplied strings
    * reach URL construction, so destination-level SSRF is not possible through the SDK.
+   *
+   * HTTP is allowed only for loopback names ('localhost', '127.0.0.1', '[::1]')
+   * and IP literals in RFC1918 ranges. Hostnames that visually resemble private
+   * IPs ('10.attacker.example') do not qualify — only actual IPv4 literals
+   * (verified via node:net isIP) are tested against the private ranges.
+   * '0.0.0.0' is rejected because it is a bind address, not a valid destination.
    */
   private static validateBaseUrl(url: string): void {
     try {
       const parsed = new URL(url);
       if (parsed.protocol === 'https:') return;
-      // Allow HTTP for loopback and private network addresses (VPC, local dev)
       const host = parsed.hostname;
-      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '0.0.0.0';
-      const isPrivate = host.startsWith('10.') ||
-        host.startsWith('192.168.') ||
-        /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-      if (!isLoopback && !isPrivate) {
+      const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+      // Only treat as private when host is an actual IPv4 literal — DNS names whose
+      // labels start with '10.' or '192.168.' must not bypass HTTPS enforcement.
+      const isPrivateIp =
+        isIP(host) === 4 &&
+        (
+          /^10\./.test(host) ||
+          /^192\.168\./.test(host) ||
+          /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+        );
+      if (!isLoopback && !isPrivateIp) {
         throw new Error(
           `baseUrl must use HTTPS for non-loopback targets (got ${parsed.protocol}//${parsed.hostname}). ` +
-          `HTTP is only allowed for localhost/127.0.0.1 and private network addresses.`
+          `HTTP is only allowed for localhost/127.0.0.1/[::1] and IPv4 literals in RFC1918 ranges.`
         );
       }
     } catch (e) {
@@ -881,6 +887,37 @@ export class HttpClient {
         throw new Error(`Invalid baseUrl: ${url}`);
       }
       throw e;
+    }
+  }
+
+  /**
+   * Validate header names and values against RFC 7230 to reject CR/LF/NUL
+   * injection (request smuggling) and out-of-spec characters. Applied to
+   * consumer-supplied `defaultHeaders` at construction; per-request `headers`
+   * passed to individual fetch methods are still validated by the underlying
+   * fetch implementation, but defenders should also sanitize at the caller.
+   *
+   * RFC 7230 §3.2.6 — header name is `1*tchar`; value is VCHAR/obs-text.
+   * CR (0x0D), LF (0x0A), and NUL (0x00) are explicitly forbidden in both.
+   */
+  private static validateHeaders(headers: Record<string, string> | undefined): void {
+    if (!headers) return;
+    const tchar = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+    const forbiddenValueChars = /[\r\n\0]/;
+    for (const [name, value] of Object.entries(headers)) {
+      if (typeof name !== 'string' || typeof value !== 'string') {
+        throw new Error(`Invalid header: name and value must be strings`);
+      }
+      if (!tchar.test(name)) {
+        throw new Error(
+          `Invalid header name "${name}": must match RFC 7230 tchar (alphanumeric and !#$%&'*+-.^_\`|~)`
+        );
+      }
+      if (forbiddenValueChars.test(value)) {
+        throw new Error(
+          `Invalid header value for "${name}": CR, LF, and NUL characters are forbidden (header smuggling prevention)`
+        );
+      }
     }
   }
 

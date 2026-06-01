@@ -212,6 +212,22 @@ describe('NetworkError', () => {
     expect(err.message).toContain('Check your connection');
     expect(err.details).toBeUndefined();
   });
+
+  // Regression: TypeError from fetch() can contain credentials embedded in the
+  // failing URL. The wrapped message is sanitized at construction so direct
+  // .message access by logging middleware does not exfiltrate.
+  it('should sanitize credentials embedded in wrapped fetch error messages', () => {
+    const upstream = 'Failed to fetch https://api.example.com/endpoint?session_token=ulr_leakedsessiontoken12345';
+    const err = new NetworkError(upstream, 'https://api.example.com');
+    expect(err.message).not.toContain('ulr_leakedsessiontoken12345');
+    expect(err.message).toContain('[REDACTED]');
+  });
+
+  it('should sanitize bearer tokens in wrapped fetch error messages', () => {
+    const upstream = 'Request failed with bearer eyJhbGciOiJIUzI1NiJ9.payload.signature';
+    const err = new NetworkError(upstream);
+    expect(err.message).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+  });
 });
 
 describe('TimeoutError', () => {
@@ -397,6 +413,20 @@ describe('createErrorFromStatus()', () => {
     expect(err).toBeInstanceOf(RateLimitError);
     expect(err.message).toBe('Per-project limit exceeded');
     expect((err as RateLimitError).retryAfter).toBe(10);
+  });
+
+  // Regression: server response messages may contain credentials forwarded by
+  // a misconfigured or compromised upstream. Sanitize at the trust boundary
+  // so .message access by logging middleware cannot exfiltrate.
+  it('should sanitize ulr_ tokens in server-supplied error messages', () => {
+    const err = createErrorFromStatus(400, 'Rate limit exceeded for token ulr_abc123def456ghi789jkl');
+    expect(err.message).not.toContain('ulr_abc123def456ghi789jkl');
+    expect(err.message).toContain('[REDACTED]');
+  });
+
+  it('should sanitize bearer tokens in server-supplied error messages', () => {
+    const err = createErrorFromStatus(403, 'Invalid bearer eyJhbGc.payload.signature on request');
+    expect(err.message).not.toContain('eyJhbGc.payload.signature');
   });
 
   it.each([

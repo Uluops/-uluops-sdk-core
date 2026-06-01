@@ -2,6 +2,78 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.11.0] — 2026-06-01
+
+### Breaking
+
+- **Removed `options.schema` parameter from `request`, `requestRaw`, `get`, `post`, `patch`, `put`, `delete`.**
+  The parameter accepted any object with a `.parse()` method, which created a code-execution
+  primitive when the schema was supplied by an untrusted source (security audit run #16). The
+  SDK no longer invokes consumer-supplied callables.
+
+  **Migration:** parse the result yourself after the call.
+
+  ```ts
+  // Before (0.10.x)
+  const user = await client.get('/me', undefined, { schema: UserSchema });
+
+  // After (0.11.0)
+  const user = UserSchema.parse(await client.get<unknown>('/me'));
+  ```
+
+- **Removed `ResponseValidationError` class and `isResponseValidationError` type guard.**
+  The class was only thrown by the removed `options.schema` path. Consumers parsing
+  responses themselves see `ZodError` directly (or whatever their validation library throws).
+
+- **Removed `ERROR_CODES.RESPONSE_VALIDATION_ERROR` constant.**
+
+- **`zod` moved from `dependencies` to `devDependencies`.** sdk-core no longer
+  depends on Zod at runtime. Consumer packages (registry-sdk, registry-mcp,
+  ops-sdk, core, cli) that use Zod must declare it directly. Most already do.
+
+### Security
+
+- **`validateBaseUrl` no longer accepts attacker DNS that resembles private IPs.**
+  Pre-fix, `host.startsWith('10.')` accepted `10.attacker.com` as a "private" host and allowed
+  HTTP, enabling cleartext credential transmission. Now requires `net.isIP() === 4` plus a
+  numeric octet match. `0.0.0.0` is also no longer treated as loopback (it is a bind address,
+  not a destination).
+- **`NetworkError` ctor and `createErrorFromStatus` now sanitize wrapped messages.**
+  TypeError messages from `fetch()` may contain credentials embedded in failing URLs; server
+  error responses may forward credentials. Both ingress points apply `sanitizeString` so direct
+  `err.message` access by logging middleware does not exfiltrate. Hand-crafted SDK error
+  messages are unchanged.
+- **`loadStoredCredentials` treats malformed `expiresAt` as expired.** Previously
+  `new Date('garbage') <= now` evaluated to false, accepting any non-date string as
+  never-expires. Now logs a warning and returns null.
+- **`HttpClient` constructor validates `defaultHeaders`** against RFC 7230 `tchar` (names)
+  and rejects CR/LF/NUL in values. Closes header smuggling via consumer-supplied headers.
+
+### Changed
+
+- `prebuild` no longer uses inline `node -e` to emit `src/config/generated-version.ts`.
+  Extracted to `scripts/generate-version.mjs` so the publish-time code path is review-gated.
+- `prepublishOnly` now runs `lint && test && audit --omit=dev && build`. Production-dep
+  vulnerabilities block publish. Combined with `publishConfig.provenance: true`, this
+  pairs producer-side gates with consumer-verifiable Sigstore attestations.
+- Lockfile regenerated to align with current package version (was lagging at 0.5.1).
+
+### Supply chain
+
+- Added `"provenance": true` to `publishConfig`. Every published tarball will carry a
+  Sigstore attestation linking it to its source commit. Consumers SHOULD run
+  `npm audit signatures` in CI to verify.
+- `SCOPE.md` now documents the producer-side gates and consumer-side recommendations
+  (pin with `--save-exact`, run `npm ci`, avoid `--ignore-scripts`). Five downstream
+  packages currently float on `^0.10.2` — switching them to exact pins closes the
+  caret-propagation path that synthesis flagged.
+
+### Dev dependencies
+
+- `vitest` ^3.0.4 → ^4.1.8 (closes GHSA-5xrq-8626-4rwp CVSS 9.8 and 5 chained high CVEs in the
+  vite/rollup/flatted/minimatch/picomatch transitive tree). `npm audit` reports zero
+  vulnerabilities.
+
 ## [0.10.2] — 2026-05-25
 
 ### Fixed

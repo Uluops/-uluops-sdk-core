@@ -172,9 +172,21 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
       return null;
     }
 
-    // Check if session token is expired
+    // Check if session token is expired.
+    // Malformed expiresAt strings produce Invalid Date (NaN). `NaN <= date` is
+    // false in JS, so the naive `expiresAt <= now` check would accept any
+    // garbage as never-expires. Treat NaN as expired and warn so the corruption
+    // is visible — the caller falls back to re-authentication, which is the
+    // safe outcome.
     if (profileCreds.type === 'session' && profileCreds.expiresAt) {
       const expiresAt = new Date(profileCreds.expiresAt);
+      if (isNaN(expiresAt.getTime())) {
+        console.warn(
+          '[sdk-core] Warning: credentials.json has malformed expiresAt — treating session as expired. ' +
+          'Re-authenticate to refresh.'
+        );
+        return null;
+      }
       if (expiresAt <= new Date()) {
         return null;
       }

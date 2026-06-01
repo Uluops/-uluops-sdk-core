@@ -52,3 +52,32 @@ sanitize* functions        │  (used internally, not re-exported)
 ```
 
 Downstream SDKs should never duplicate core infrastructure. If a pattern is needed by more than one SDK, it belongs here.
+
+## Supply Chain Posture
+
+sdk-core sits upstream of five consumer packages via npm caret ranges, so a poisoned publish auto-propagates on next `npm install`. The posture below is the minimum baseline; full CI-only publishing is deferred until a break-glass design exists (see security audit run #16).
+
+### Producer-side (this package)
+
+- **Provenance is enabled** in `publishConfig` (`"provenance": true`). Every published tarball carries a Sigstore attestation linking it to the source commit and build environment.
+- **`prepublishOnly` gates publish on `lint && test && audit --omit=dev && build`.** Production-dep vulnerabilities block publish; devDep vulnerabilities surface separately via `npm audit`.
+- **Publish requires npm 2FA on auth-and-writes.** Set on the npm account, not in this repo. Maintainers MUST NOT use account tokens that bypass 2FA for publish.
+- **`prebuild` is a checked-in script**, not an inline `node -e`. Any change to `scripts/generate-version.mjs` is review-gated like any other source.
+- **No postinstall, preinstall, or install lifecycle scripts** ship with the package. Consumers run zero arbitrary code from sdk-core at install time.
+
+### Consumer-side (downstream packages)
+
+Consumers — including the five UluOps SDKs that depend on sdk-core — SHOULD:
+
+- **Pin sdk-core with `--save-exact`** (e.g., `"@uluops/sdk-core": "0.11.0"`, not `"^0.11.0"`). A poisoned 0.11.1 cannot auto-propagate to a consumer that pins exact.
+- **Run `npm audit signatures`** in CI on install to verify the provenance attestation.
+- **Use `npm ci` rather than `npm install`** in CI to enforce the lockfile.
+- **Avoid `--ignore-scripts` defeats** of their own `prepublishOnly` gates.
+
+### What this posture does NOT defend against
+
+- A compromised maintainer machine running `npm publish` with valid credentials. Provenance attests origin but cannot verify intent.
+- A `--ignore-scripts` bypass at the producer side. The gate is advisory, not enforced by npm.
+- A successful workflow-edit attack if CI-only publish is later adopted without action SHA-pinning and branch protection on `.github/workflows/`.
+
+These residual risks are accepted for now and tracked in `sdk-core` security-audit findings.

@@ -23,7 +23,6 @@ export {
   ServiceUnavailableError,
   NetworkError,
   TimeoutError,
-  ResponseValidationError,
   createErrorFromStatus,
   isSdkApiError,
   isValidationError,
@@ -37,7 +36,6 @@ export {
   isServiceUnavailableError,
   isNetworkError,
   isTimeoutError,
-  isResponseValidationError,
 } from './errors/errors.js';
 
 // Config

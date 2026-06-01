@@ -143,10 +143,14 @@ describe('HttpClient.get()', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Zod schema validation
+// External response validation (the post-0.11 pattern)
+//
+// The SDK no longer accepts an `options.schema` parameter. Consumers parse
+// responses themselves. These tests document the supported pattern and lock
+// in the absence of the removed exfil surface.
 // ---------------------------------------------------------------------------
-describe('Zod schema validation', () => {
-  it('should validate response against schema on request()', async () => {
+describe('external response validation pattern', () => {
+  it('callers parse the result with a Zod schema after the call', async () => {
     const { z } = await import('zod');
     const schema = z.object({ id: z.number(), name: z.string() });
 
@@ -155,12 +159,13 @@ describe('Zod schema validation', () => {
       .reply(200, { data: { id: 1, name: 'test' } });
 
     const client = makeClient();
-    const result = await client.request<z.infer<typeof schema>>('GET', '/validated', undefined, { schema });
-    expect(result).toEqual({ id: 1, name: 'test' });
+    const raw = await client.get<unknown>('/validated');
+    const parsed = schema.parse(raw);
+    expect(parsed).toEqual({ id: 1, name: 'test' });
   });
 
-  it('should throw ZodError when response does not match schema', async () => {
-    const { z } = await import('zod');
+  it('callers see ZodError directly when the response does not match', async () => {
+    const { z, ZodError } = await import('zod');
     const schema = z.object({ id: z.number(), name: z.string() });
 
     nock(TEST_BASE_URL)
@@ -168,25 +173,11 @@ describe('Zod schema validation', () => {
       .reply(200, { data: { id: 'not-a-number', name: 123 } });
 
     const client = makeClient();
-    await expect(
-      client.request<z.infer<typeof schema>>('GET', '/bad-shape', undefined, { schema })
-    ).rejects.toThrow();
+    const raw = await client.get<unknown>('/bad-shape');
+    expect(() => schema.parse(raw)).toThrow(ZodError);
   });
 
-  it('should validate response via get() options.schema', async () => {
-    const { z } = await import('zod');
-    const schema = z.object({ items: z.array(z.string()) });
-
-    nock(TEST_BASE_URL)
-      .get(apiPath('/list'))
-      .reply(200, { data: { items: ['a', 'b'] } });
-
-    const client = makeClient();
-    const result = await client.get<z.infer<typeof schema>>('/list', undefined, { schema });
-    expect(result).toEqual({ items: ['a', 'b'] });
-  });
-
-  it('should validate response via requestRaw() options.schema', async () => {
+  it('the same pattern works for requestRaw()', async () => {
     const { z } = await import('zod');
     const schema = z.object({ raw: z.boolean() });
 
@@ -195,8 +186,9 @@ describe('Zod schema validation', () => {
       .reply(200, { raw: true });
 
     const client = makeClient();
-    const result = await client.requestRaw<z.infer<typeof schema>>('GET', '/raw-validated', undefined, { schema });
-    expect(result).toEqual({ raw: true });
+    const raw = await client.requestRaw<unknown>('GET', '/raw-validated');
+    const parsed = schema.parse(raw);
+    expect(parsed).toEqual({ raw: true });
   });
 });
 
@@ -993,6 +985,72 @@ describe('validateBaseUrl', () => {
     expect(() => makeClient({
       baseUrl: 'http://localhost:3100/api/v1',
     })).not.toThrow();
+  });
+
+  // Regression: DNS names whose labels resemble private IP prefixes must not
+  // bypass HTTPS enforcement. Pre-fix, host.startsWith('10.') accepted these.
+  it('should reject HTTP for DNS names that start with 10.', () => {
+    expect(() => makeClient({ baseUrl: 'http://10.attacker.com/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  it('should reject HTTP for DNS names that start with 192.168.', () => {
+    expect(() => makeClient({ baseUrl: 'http://192.168.evil.example.com/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  it('should reject HTTP for DNS names that look like 172.16-31.x', () => {
+    expect(() => makeClient({ baseUrl: 'http://172.16.attacker.com/v1' })).toThrow(/must use HTTPS/);
+  });
+
+  // Regression: 0.0.0.0 is a bind address, not a valid client destination.
+  it('should reject HTTP for 0.0.0.0', () => {
+    expect(() => makeClient({ baseUrl: 'http://0.0.0.0:3100/api/v1' })).toThrow(/must use HTTPS/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// defaultHeaders CR/LF/NUL validation (header smuggling prevention)
+// ---------------------------------------------------------------------------
+describe('defaultHeaders validation', () => {
+  it('should accept valid headers', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Trace-Id': 'abc-123' },
+    })).not.toThrow();
+  });
+
+  it('should reject header names containing CR', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Bad\r': 'value' },
+    })).toThrow(/Invalid header name/);
+  });
+
+  it('should reject header names containing LF', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Bad\n': 'value' },
+    })).toThrow(/Invalid header name/);
+  });
+
+  it('should reject header values containing CR', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Trace': 'value\rGET /admin' },
+    })).toThrow(/CR, LF, and NUL/);
+  });
+
+  it('should reject header values containing LF', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Trace': 'value\nInjected: header' },
+    })).toThrow(/CR, LF, and NUL/);
+  });
+
+  it('should reject header values containing NUL', () => {
+    expect(() => makeClient({
+      baseUrl: 'https://api.uluops.com/v1',
+      defaultHeaders: { 'X-Trace': 'value\0null' },
+    })).toThrow(/CR, LF, and NUL/);
   });
 });
 

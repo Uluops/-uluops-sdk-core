@@ -168,14 +168,21 @@ export class ServiceUnavailableError extends SdkApiError {
 }
 
 /**
- * Network/connection error (no response received)
+ * Network/connection error (no response received).
+ *
+ * The wrapped fetch-error message is sanitized at construction because it may
+ * contain credentials embedded in the failing URL (e.g., a session token in
+ * a query parameter that reached the fetch call). This is the proven exfil
+ * path — direct `.message` access by logging middleware would otherwise leak
+ * the upstream credential. Sanitizing at construction rather than at log sites
+ * means consumers reading `err.message` directly (Sentry, winston) are safe.
  */
 export class NetworkError extends SdkApiError {
   constructor(message: string, baseUrl?: string) {
     const hint = baseUrl
       ? `Failed to connect to ${baseUrl}. Verify the API server is running and the URL is correct.`
       : 'Network request failed. Check your connection and baseUrl configuration.';
-    super(0, `${hint} (${message})`, ERROR_CODES.NETWORK_ERROR, baseUrl ? { baseUrl } : undefined);
+    super(0, `${hint} (${sanitizeString(message, 0)})`, ERROR_CODES.NETWORK_ERROR, baseUrl ? { baseUrl } : undefined);
     this.name = 'NetworkError';
   }
 
@@ -204,25 +211,13 @@ export class TimeoutError extends SdkApiError {
 }
 
 /**
- * API returned a successful HTTP response but the body did not match the expected schema.
- * This is a contract violation, not a transient error — retrying will produce the same shape.
- * Uses statusCode: -2 to distinguish from NetworkError (0) and TimeoutError (-1).
- */
-export class ResponseValidationError extends SdkApiError {
-  constructor(endpoint: string, issues: Array<{ path: PropertyKey[]; message: string }>) {
-    const fields = issues.map(i => i.path.map(String).join('.')).join(', ');
-    super(
-      -2,
-      `API response validation failed on ${endpoint}: unexpected shape on fields [${fields}]`,
-      ERROR_CODES.RESPONSE_VALIDATION_ERROR,
-      { endpoint, issues }
-    );
-    this.name = 'ResponseValidationError';
-  }
-}
-
-/**
- * Create appropriate error from HTTP status code
+ * Create appropriate error from HTTP status code.
+ *
+ * Server-returned messages are sanitized at this trust boundary so credentials
+ * embedded in upstream API error responses cannot reach `err.message` access
+ * by logging middleware. This is the second proven exfil path (in addition to
+ * NetworkError). Hand-crafted error messages constructed elsewhere in the SDK
+ * are not affected because they bypass this function.
  */
 export function createErrorFromStatus(
   statusCode: number,
@@ -231,35 +226,36 @@ export function createErrorFromStatus(
   details?: Record<string, unknown>,
   requestId?: string
 ): SdkApiError {
+  const safe = sanitizeString(message, 0);
   switch (statusCode) {
     case HTTP_STATUS.BAD_REQUEST:
-      return new ValidationError(message, details, requestId);
+      return new ValidationError(safe, details, requestId);
     case HTTP_STATUS.UNAUTHORIZED:
-      return new UnauthorizedError(message, requestId);
+      return new UnauthorizedError(safe, requestId);
     case HTTP_STATUS.FORBIDDEN:
-      return new ForbiddenError(message, requestId);
+      return new ForbiddenError(safe, requestId);
     case HTTP_STATUS.NOT_FOUND:
-      return new NotFoundError(message, undefined, requestId);
+      return new NotFoundError(safe, undefined, requestId);
     case HTTP_STATUS.CONFLICT:
-      return new ConflictError(message, details, requestId);
+      return new ConflictError(safe, details, requestId);
     case HTTP_STATUS.PAYLOAD_TOO_LARGE: {
       const maxSize = typeof details?.maxSize === 'number' ? details.maxSize : undefined;
-      return new PayloadTooLargeError(message, maxSize, requestId);
+      return new PayloadTooLargeError(safe, maxSize, requestId);
     }
     case HTTP_STATUS.UNPROCESSABLE_ENTITY:
-      return new UnprocessableError(message, details, requestId);
+      return new UnprocessableError(safe, details, requestId);
     case HTTP_STATUS.TOO_MANY_REQUESTS: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new RateLimitError(message, retryAfter, requestId);
+      return new RateLimitError(safe, retryAfter, requestId);
     }
     case HTTP_STATUS.SERVICE_UNAVAILABLE:
     case HTTP_STATUS.BAD_GATEWAY:
     case HTTP_STATUS.GATEWAY_TIMEOUT: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new ServiceUnavailableError(message, retryAfter, requestId);
+      return new ServiceUnavailableError(safe, retryAfter, requestId);
     }
     default:
-      return new SdkApiError(statusCode, message, code, details, requestId);
+      return new SdkApiError(statusCode, safe, code, details, requestId);
   }
 }
 
@@ -347,6 +343,3 @@ export function isTimeoutError(error: unknown): error is TimeoutError {
   return error instanceof TimeoutError;
 }
 
-export function isResponseValidationError(error: unknown): error is ResponseValidationError {
-  return error instanceof ResponseValidationError;
-}
