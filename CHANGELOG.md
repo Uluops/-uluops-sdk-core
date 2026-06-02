@@ -2,6 +2,30 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.11.1] — 2026-06-01
+
+### Security
+
+- **Reject HTTP redirects on all requests.** All three `fetch()` call sites now set `redirect: 'error'`. `validateBaseUrl` enforces transport rules at the configured origin but cannot follow redirect chains; per WHATWG fetch, `Authorization` is stripped cross-origin but the request body is not, so a 3xx on the login POST would otherwise replay email+password to an attacker-controlled host.
+- **Strip control characters from error messages.** New `stripControlChars` helper (also exported) neutralizes CR/LF/null/tab in caller-supplied identifier fragments (e.g., `NotFoundError`'s `resource`) that previously flowed unfiltered into `error.message` and enabled log spoofing in consumer loggers. `SdkApiError` base constructor wraps the incoming message; `sanitizeString` strips control chars as its first step.
+- **Widen header redaction.** `SENSITIVE_KEYS` in `sanitizeForLog` now matches `x-api-key`, `set-cookie`, `proxy-authorization`, and `x-auth-token`. Anchored form retained to avoid over-redacting legitimate fields like `token_count`.
+- **Add `column` to `REDACTED_DETAIL_KEYS`.** The category comment promised `table, column, constraint` coverage but the implementation listed only `table` and `constraint`. Closes the comment/code divergence in defense-in-depth scope.
+- **Extend `sanitizeString` free-text redaction.** Covers URL userinfo (`https://user:pass@host` — scheme preserved, credentials redacted) and bare JWT shapes (`eyJ`-prefixed `header.payload.signature`).
+
+### Supply chain
+
+- **Pin all dependencies and devDependencies to exact versions.** Adopted in response to today's RedHat-class supply-chain attack pattern. A poisoned upstream release auto-propagates through caret ranges on next `npm install` even with a lockfile present (npm install re-resolves carets when the lockfile drifts or regenerates). Pinning at the manifest level closes the gap — every dependency upgrade is now an explicit reviewable commit. Policy is "until further notice" and documented in `SCOPE.md` Supply Chain Posture.
+- **Exclude source maps from the published tarball.** `files` array tightened from `["dist", "LICENSE"]` to `["dist/**/*.js", "dist/**/*.d.ts", "LICENSE"]`. Source maps embed absolute developer paths via `sourceRoot` and inline source via `sourcesContent`; published Node libraries rarely need them.
+- **Bump Node engines floor from `>=18.0.0` to `>=20.0.0`.** Node 18 EOL'd April 2025.
+
+### Documentation
+
+- **SCOPE.md gains three Security Perimeter bullets** (5, 6, 7):
+  - (5) `$HOME` single-user trust boundary for `~/.uluops/credentials.json` storage — shared-host deployments MUST use env vars instead.
+  - (6) Redirect rejection on all `fetch()` calls.
+  - (7) Redaction operates on ASCII-canonical key names and external-exposure strings; response key authoring is trusted to the upstream API.
+- **SCOPE.md Supply Chain Posture** updated with the new exact-pinning producer-side rule.
+
 ## [0.11.0] — 2026-06-01
 
 ### Breaking
