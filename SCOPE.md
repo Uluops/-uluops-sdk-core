@@ -63,6 +63,7 @@ sdk-core sits upstream of five consumer packages via npm caret ranges, so a pois
 ### Producer-side (this package)
 
 - **Provenance is enabled** in `publishConfig` (`"provenance": true`). Every published tarball carries a Sigstore attestation linking it to the source commit and build environment.
+- **All `dependencies` and `devDependencies` are pinned to exact versions** (no caret, no tilde). Adopted 2026-06-01 in response to the RedHat-class supply-chain attack pattern. A poisoned upstream release cannot auto-propagate to sdk-core on `npm install` — every dependency upgrade is an explicit reviewable commit. Lockfile alone is insufficient because `npm install` re-resolves carets against the registry; pinning at the manifest level closes the gap.
 - **`prepublishOnly` gates publish on `lint && test && audit --omit=dev && build`.** Production-dep vulnerabilities block publish; devDep vulnerabilities surface separately via `npm audit`.
 - **Publish requires npm 2FA on auth-and-writes.** Set on the npm account, not in this repo. Maintainers MUST NOT use account tokens that bypass 2FA for publish.
 - **`prebuild` is a checked-in script**, not an inline `node -e`. Any change to `scripts/generate-version.mjs` is review-gated like any other source.

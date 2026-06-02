@@ -68,18 +68,18 @@
   "homepage": "https://github.com/uluops/uluops/tree/main/packages/sdk-core#readme",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^17.2.4"
+    "dotenv": "17.2.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
-    "@types/node": "^22.12.0",
-    "@vitest/coverage-v8": "^4.1.8",
-    "eslint": "^9.39.2",
-    "nock": "^14.0.1",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.54.0",
-    "vitest": "^4.1.8",
-    "zod": "^4.3.6"
+    "@eslint/js": "9.39.2",
+    "@types/node": "22.12.0",
+    "@vitest/coverage-v8": "4.1.8",
+    "eslint": "9.39.2",
+    "nock": "14.0.1",
+    "typescript": "5.7.3",
+    "typescript-eslint": "8.54.0",
+    "vitest": "4.1.8",
+    "zod": "4.3.6"
   },
   "engines": {
     "node": ">=20.0.0"
