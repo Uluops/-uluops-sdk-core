@@ -446,4 +446,12 @@ describe('sanitizeString()', () => {
     expect(result).toContain('[REDACTED]');
     expect(result).not.toContain('eyJ');
   });
+
+  it('should strip CR/LF/control chars to neutralize log spoofing', () => {
+    const result = sanitizeString('user not found: alice\r\nFAKE LOG ENTRY\x00trailer');
+    expect(result).not.toContain('\r');
+    expect(result).not.toContain('\n');
+    expect(result).not.toContain('\x00');
+    expect(result).toContain('alice');
+  });
 });

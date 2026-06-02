@@ -157,6 +157,21 @@ const CREDENTIAL_VALUE_PATTERNS: RegExp[] = [
 // URL userinfo (https://user:pass@host) — preserves scheme, replaces credentials.
 const URL_USERINFO_PATTERN = /\b(https?|wss?|ftp):\/\/[^\s/@]+:[^\s/@]+@/gi;
 
+// C0 control chars + DEL (excluding space at 0x20). Neutralizes log-spoofing
+// via CR/LF/tab injection in caller-supplied error message fragments.
+const CONTROL_CHARS_PATTERN = /[\x00-\x1F\x7F]/g;
+
+/**
+ * Strip control characters (C0 + DEL) by replacing them with spaces.
+ *
+ * Defends against CRLF injection / log spoofing in error message fragments
+ * that include caller-supplied identifiers (resource names, IDs, etc.).
+ * Single-purpose: does NOT redact credentials — use sanitizeString for that.
+ */
+export function stripControlChars(message: string): string {
+  return message.replace(CONTROL_CHARS_PATTERN, ' ');
+}
+
 /**
  * Sanitize a string by redacting credential values and truncating.
  *
@@ -178,7 +193,7 @@ const URL_USERINFO_PATTERN = /\b(https?|wss?|ftp):\/\/[^\s/@]+:[^\s/@]+@/gi;
  * ```
  */
 export function sanitizeString(message: string, maxLength = 1000): string {
-  let safe = message;
+  let safe = stripControlChars(message);
   URL_USERINFO_PATTERN.lastIndex = 0;
   safe = safe.replace(URL_USERINFO_PATTERN, (_match, scheme: string) => `${scheme}://[REDACTED]@`);
   for (const pattern of CREDENTIAL_VALUE_PATTERNS) {

@@ -7,7 +7,7 @@
  */
 
 import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
-import { sanitizeForDisplay, sanitizeString } from '../utils/logger.js';
+import { sanitizeForDisplay, sanitizeString, stripControlChars } from '../utils/logger.js';
 
 /**
  * Base API error class for all UluOps SDK errors
@@ -20,7 +20,7 @@ export class SdkApiError extends Error {
     public readonly details?: Record<string, unknown>,
     public readonly requestId?: string
   ) {
-    super(message);
+    super(stripControlChars(message));
     this.name = 'SdkApiError';
     if (typeof Error.captureStackTrace === 'function') {
       Error.captureStackTrace(this, this.constructor);
