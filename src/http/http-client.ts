@@ -100,7 +100,7 @@ const REDACTED_DETAIL_KEYS = new Set([
   // Stack traces
   'stack', 'trace', 'stackTrace',
   // Database internals (MySQL, Postgres, SQLite)
-  'query', 'sql', 'sqlMessage', 'sqlState', 'table', 'constraint',
+  'query', 'sql', 'sqlMessage', 'sqlState', 'table', 'column', 'constraint',
   // System/OS internals
   'errno', 'syscall', 'hostname', 'address', 'port', 'pid', 'path',
   // Framework/error-chain internals

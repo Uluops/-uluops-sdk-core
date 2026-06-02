@@ -150,7 +150,12 @@ const CREDENTIAL_VALUE_PATTERNS: RegExp[] = [
   /(?:token|secret|password|passwd)\s*[:=]\s*\S+/gi,
   // Stack traces (internal implementation details)
   /at\s+\S+\s+\(\S+:\d+:\d+\)/g,
+  // Bare JWTs (header.payload.signature with eyJ-prefixed base64url parts)
+  /\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
 ];
+
+// URL userinfo (https://user:pass@host) — preserves scheme, replaces credentials.
+const URL_USERINFO_PATTERN = /\b(https?|wss?|ftp):\/\/[^\s/@]+:[^\s/@]+@/gi;
 
 /**
  * Sanitize a string by redacting credential values and truncating.
@@ -174,6 +179,8 @@ const CREDENTIAL_VALUE_PATTERNS: RegExp[] = [
  */
 export function sanitizeString(message: string, maxLength = 1000): string {
   let safe = message;
+  URL_USERINFO_PATTERN.lastIndex = 0;
+  safe = safe.replace(URL_USERINFO_PATTERN, (_match, scheme: string) => `${scheme}://[REDACTED]@`);
   for (const pattern of CREDENTIAL_VALUE_PATTERNS) {
     // Reset lastIndex for global regexes (stateful across calls)
     pattern.lastIndex = 0;

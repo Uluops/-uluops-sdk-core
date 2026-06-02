@@ -427,4 +427,23 @@ describe('sanitizeString()', () => {
     const twice = sanitizeString(once);
     expect(twice).toBe(once);
   });
+
+  it('should redact URL userinfo while preserving scheme', () => {
+    const result = sanitizeString('connect failed: https://admin:s3cret@db.example.com/x');
+    expect(result).toContain('https://[REDACTED]@');
+    expect(result).not.toContain('s3cret');
+    expect(result).not.toContain('admin');
+  });
+
+  it('should redact URL userinfo across schemes', () => {
+    expect(sanitizeString('postgres at wss://u:p@host')).toContain('wss://[REDACTED]@');
+    expect(sanitizeString('see ftp://u:p@host')).toContain('ftp://[REDACTED]@');
+  });
+
+  it('should redact bare JWT shapes (header.payload.signature)', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    const result = sanitizeString(`got token ${jwt} in response`);
+    expect(result).toContain('[REDACTED]');
+    expect(result).not.toContain('eyJ');
+  });
 });
