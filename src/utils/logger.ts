@@ -158,7 +158,9 @@ const CREDENTIAL_VALUE_PATTERNS: RegExp[] = [
 const URL_USERINFO_PATTERN = /\b(https?|wss?|ftp):\/\/[^\s/@]+:[^\s/@]+@/gi;
 
 // C0 control chars + DEL (excluding space at 0x20). Neutralizes log-spoofing
-// via CR/LF/tab injection in caller-supplied error message fragments.
+// via CR/LF/tab injection in caller-supplied error message fragments. The
+// control-char literals are intentional — that's what this regex matches.
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS_PATTERN = /[\x00-\x1F\x7F]/g;
 
 /**
