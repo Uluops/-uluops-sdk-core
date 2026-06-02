@@ -216,6 +216,7 @@ export class HttpClient {
             headers: this.defaultHeaders,
             body: JSON.stringify(body),
             signal: controller.signal,
+            redirect: 'error',
           });
 
           if (!response.ok) {
@@ -461,6 +462,7 @@ export class HttpClient {
         headers,
         body,
         signal: controller.signal,
+        redirect: 'error',
       });
 
       this.logger.debug(`${method} ${endpoint} -> ${response.status}`);
@@ -555,6 +557,7 @@ export class HttpClient {
         headers,
         body: options?.body,
         signal: controller.signal,
+        redirect: 'error',
       });
 
       if (!response.ok) {

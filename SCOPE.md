@@ -21,8 +21,10 @@ The SDK operates as a **client library** — it sends authenticated requests to 
 2. **Transport security**: enforce HTTPS for non-loopback targets. HTTP is allowed only for localhost, 127.0.0.1, [::1], and RFC 1918 private ranges.
 3. **Error sanitization**: strip server internals (stack traces, SQL, system paths) from error details before exposing to consumers.
 4. **Retry safety**: only retry idempotent operations (GET) by default. Mutations require explicit opt-in via `retryMutations`.
+5. **Local credential storage trust model**: `~/.uluops/credentials.json` is read with a `statSync` → `readFileSync` pattern that does not defend against local-filesystem TOCTOU swaps or symlink redirection. This is intentional. sdk-core treats `$HOME` as a single-user trust boundary: an attacker with write access to `~/.uluops/` can replace credentials directly, so race-window and symlink hardening would defend against a threat that already has the credential. Shared-host and multi-tenant deployments (CI runners, build agents, jump hosts) MUST source credentials from environment variables instead — the filesystem path is for developer laptops.
+6. **Redirect rejection**: all `fetch()` calls set `redirect: 'error'`. `validateBaseUrl` enforces transport rules at the configured origin but cannot follow redirect chains. The SDK only talks to the configured baseUrl/authBaseUrl — a malicious or compromised upstream issuing a 3xx redirect to another host is rejected before the request body (which can carry credentials on login) is replayed.
 
-The SDK does **not** perform runtime security telemetry, request signing, or destination-level SSRF validation (see [ADR-001](docs/adr-001-sanitization-architecture.md) for rationale).
+The SDK does **not** perform runtime security telemetry, request signing, destination-level SSRF validation, or local-filesystem TOCTOU defense on credential reads (see [ADR-001](docs/adr-001-sanitization-architecture.md) for sanitization rationale; perimeter bullet 5 for the storage trust model).
 
 ## What This Package Is Not
 
