@@ -90,3 +90,10 @@ export {
   sanitizeString,
   type Logger,
 } from './utils/logger.js';
+
+export {
+  computeHash,
+  computePromptHash,
+  verifyHash,
+  verifyPromptHash,
+} from './utils/hash.js';

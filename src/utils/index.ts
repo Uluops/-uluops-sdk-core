@@ -19,3 +19,10 @@ export {
   sanitizeString,
   type Logger,
 } from './logger.js';
+
+export {
+  computeHash,
+  computePromptHash,
+  verifyHash,
+  verifyPromptHash,
+} from './hash.js';

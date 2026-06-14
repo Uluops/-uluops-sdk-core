@@ -1,0 +1,154 @@
+# Foundations — Three-pillar cognitive lens analysis
+# WDL Schema: https://uluops.ai/schemas/wdl/v3.0.0/workflow.json
+
+workflow:
+  interface:
+    name: foundations
+    version: "2.0.1"
+    displayName: Foundations
+    description: Three-pillar cognitive lens analysis combining Aristotelian ontology, Popperian epistemology, and Humean empiricism. Runs all three in parallel, then synthesizes cross-cutting insights.
+    domain: software
+    duration: 8-20 minutes
+    model: opus
+
+  arguments:
+    positional:
+      - name: target
+        description: Target directory, file, or artifact to analyze
+        required: true
+
+    derived:
+      - name: target_name
+        source: "basename(arguments.target)"
+      - name: target_path
+        source: "resolve(arguments.target)"
+      - name: timestamp
+        source: "now('YYYY-MM-DDTHH-mm-ss')"
+      - name: report_file
+        source: "'{{ target_name }}-foundations-{{ timestamp }}.md'"
+
+    examples:
+      - command: "/workflows:foundations uluops-registry-api/"
+        behavior: Three-lens analysis of the registry API
+
+  orchestration:
+    execution_mode:
+      default: parallel
+      parallel_groups:
+        - number: 1
+          mode: parallel
+          phases: [aristotle, popper, hume]
+        - number: 2
+          mode: always
+          phases: [synthesis]
+
+    phases:
+      - id: aristotle
+        name: Aristotelian Ontology
+        group: 1
+        steps:
+          - command: aristotle-analyst@latest
+        gate:
+          threshold: 70
+          on_fail: warn
+        focus:
+          - Four-cause decomposition (material, formal, efficient, final)
+          - Essential vs accidental properties and telos coherence
+
+      - id: popper
+        name: Popperian Epistemology
+        group: 1
+        steps:
+          - command: popper-analyst@latest
+        gate:
+          threshold: 70
+          on_fail: warn
+        focus:
+          - Theory identification and falsifiability assessment
+          - Corroboration depth and untested assumptions
+
+      - id: hume
+        name: Humean Empiricism
+        group: 1
+        steps:
+          - command: hume-analyst@latest
+        gate:
+          threshold: 70
+          on_fail: warn
+        focus:
+          - Evidence tracing and causal claim audit
+          - Habit vs necessity and is-ought violations
+
+      - id: synthesis
+        name: Cross-Lens Synthesis
+        group: 2
+        depends_on: [aristotle, popper, hume]
+        steps:
+          - command: workflow-synthesis@latest
+        gate:
+          threshold: 0
+          on_fail: warn
+        focus:
+          - Convergence and divergence across lenses
+          - Blind spots and emergent insights
+
+    on_failure: continue
+    max_parallel: 3
+
+  aggregation:
+    score:
+      method: weighted_average
+      weights:
+        aristotle: 0.34
+        popper: 0.33
+        hume: 0.33
+      skip_missing: true
+
+    decision:
+      ILLUMINATED: "score >= 75"
+      EXAMINED: "score >= 55"
+      OBSCURED: "score < 55"
+
+  outputs:
+    artifacts:
+      - id: foundations-report
+        type: markdown
+        template: features-list
+        path: "{{ target_path }}/{{ report_file }}"
+
+    tracking:
+      enabled: true
+      provider: uluops-tracker
+      payload:
+        tool: mcp_uluops-tracker_save_run
+        project: "{{ target_name }}"
+        workflow_type: cognitive-lens
+
+    verification:
+      post_save:
+        - check: query_saved
+          provider: uluops-tracker
+          query:
+            project: "{{ target_name }}"
+            workflow_type: cognitive-lens
+          compare: recommendations.length
+          on_mismatch: warn
+          message: "Count mismatch from cross-lens deduplication is expected."
+
+  preflight:
+    checks:
+      - check: command
+        command: '[ -e "{{ target }}" ]'
+        message: "Target does not exist"
+        on_fail: abort
+
+  postflight:
+    on_pass:
+      message: "ILLUMINATED — Deep cross-lens analysis complete."
+      exit_code: 0
+    on_warn:
+      message: "EXAMINED — Partial insights across lenses."
+      exit_code: 0
+    on_fail:
+      message: "OBSCURED — Significant gaps in philosophical analysis."
+      exit_code: 0

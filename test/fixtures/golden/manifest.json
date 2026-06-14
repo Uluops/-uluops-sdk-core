@@ -1,0 +1,22 @@
+{
+  "_comment": "Golden fixtures captured from real published definitions in the UluOps registry. Each `hash`/`promptHash` is the value the registry API stored at publish time (computed with yaml@2.9.0). These lock hash normalization AND prove byte-parity with production. A future `yaml` bump that changes normalization fails these loudly. To refresh: re-fetch via the registry and re-record the stored hashes.",
+  "fixtures": [
+    {
+      "name": "aristotle-analyst",
+      "type": "agent",
+      "version": "1.4.2",
+      "yamlFile": "aristotle-analyst.yaml",
+      "runtimeFile": "aristotle-analyst.runtime.md",
+      "hash": "sha256:6f9a2542423ec3d6b58df4f562f192c602f85f919bb34369237af4d52c822ecf",
+      "promptHash": "sha256:36cfff6a5ac591d9c7872fc7a5c0053ce2c67018aace1446c84ec1feaa553ade",
+      "translatorVersion": "4.1.0"
+    },
+    {
+      "name": "foundations",
+      "type": "workflow",
+      "version": "2.0.1",
+      "yamlFile": "foundations.workflow.yaml",
+      "hash": "sha256:6251733ec6d3a298ef34826e2ab906bcfcc7150730fbcd712d8b65afc312a51d"
+    }
+  ]
+}

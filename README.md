@@ -527,6 +527,42 @@ const info: RateLimitInfo | undefined = parseRateLimitHeaders(headers);
 // { limit: 100, remaining: 42, reset: Date }
 ```
 
+#### Content Hashing
+
+The canonical content-addressing implementation shared by the registry API (which
+computes and stores hashes at publish time) and `@uluops/core` (which verifies
+caller-pinned hashes at resolve time). Both sides import from here so they hash
+**identically by construction**.
+
+Two artifacts are hashed with two different rules and are **not** interchangeable:
+
+- **YAML source** → `computeHash` — normalizes first (`yaml.parse` → `yaml.stringify`
+  with sorted keys), so semantically identical documents hash identically.
+  Falls back to raw bytes for non-object / unparseable content.
+- **Rendered prompt** → `computePromptHash` — hashes the markdown byte-for-byte
+  with **no** normalization.
+
+```typescript
+import {
+  computeHash,
+  computePromptHash,
+  verifyHash,
+  verifyPromptHash,
+} from '@uluops/sdk-core/utils';
+
+const yamlHash = computeHash(definitionYaml);        // 'sha256:...' (normalized)
+const promptHash = computePromptHash(renderedPrompt); // 'sha256:...' (raw bytes)
+
+// Verification is timing-safe and never throws on a malformed/wrong-length pin —
+// it returns false (a clean refusal), so caller-supplied pins can't crash you.
+verifyHash(definitionYaml, expectedHash);        // boolean
+verifyPromptHash(renderedPrompt, expectedPromptHash); // boolean
+```
+
+> The `yaml` dependency is pinned exact (`2.9.0`) to match the version that
+> produced the registry's stored hashes. Bumping it can change normalization and
+> is guarded by golden fixtures captured from real published definitions.
+
 ## Package Exports
 
 | Export Path | Contents |
@@ -535,7 +571,7 @@ const info: RateLimitInfo | undefined = parseRateLimitHeaders(headers);
 | `@uluops/sdk-core/http` | `HttpClient`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy` |
 | `@uluops/sdk-core/errors` | `SdkApiError` + all error subclasses, `createErrorFromStatus`, type guards |
 | `@uluops/sdk-core/config` | `loadCredentials`, `loadConfig`, constants, `EnvVarConfig` |
-| `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sanitizeString`, `sleep`, `retry`, `toQuery` |
+| `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sanitizeString`, `sleep`, `retry`, `toQuery`, `computeHash`, `computePromptHash`, `verifyHash`, `verifyPromptHash` |
 
 ## Extending for Your SDK
 

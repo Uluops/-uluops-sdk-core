@@ -2,6 +2,19 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.12.0] — 2026-06-14
+
+### Added
+
+- **Shared content-addressing hash utilities** (`@uluops/sdk-core/utils`): `computeHash`, `computePromptHash`, `verifyHash`, `verifyPromptHash`. This is now the single canonical implementation used by both the registry API (computes/stores `hash` / `prompt_hash` at publish time) and `@uluops/core` (verifies caller-pinned hashes at resolve time), so the two sides hash identically by construction. Part of the registry integrity-verification work.
+  - `computeHash(yaml)` normalizes before hashing (`yaml.parse` → `yaml.stringify` with `sortMapEntries`), with a raw-bytes fallback for non-object / unparseable content; `computePromptHash(runtimeMd)` hashes rendered markdown byte-for-byte (no normalization).
+  - `verifyHash` / `verifyPromptHash` are timing-safe and **return `false` (never throw) on a malformed or wrong-length expected hash** — a length check precedes `timingSafeEqual`, so a bad caller pin yields a clean refusal instead of a `RangeError`.
+  - The internal `normalizeForHash` helper is deliberately **not** exported; its behavior is locked by golden fixtures rather than a public contract.
+
+### Dependencies
+
+- **Add `yaml` pinned exact `2.9.0`** (per the supply-chain exact-pin policy). This is the version that produced the registry's currently-stored hashes; pinning guarantees normalization parity. Golden-fixture tests built from real published definitions fail loudly if a future `yaml` bump changes normalization.
+
 ## [0.11.1] — 2026-06-01
 
 ### Security
