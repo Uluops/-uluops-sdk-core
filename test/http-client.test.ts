@@ -412,8 +412,8 @@ describe('HTTP error mapping', () => {
     }
   });
 
-  it('should give an actionable message when credentials are present but rejected (401)', async () => {
-    nock(TEST_BASE_URL).get(apiPath('/badkey401')).reply(401);
+  it('augments a rejected-credential 401 with actionable guidance, preserving the server reason', async () => {
+    nock(TEST_BASE_URL).get(apiPath('/badkey401')).reply(401, { error: { message: 'Token expired' } });
 
     const client = makeClient({ apiKey: 'ulr_aaaaaaaaaaaaaaaaaaaa' });
     try {
@@ -422,11 +422,24 @@ describe('HTTP error mapping', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(UnauthorizedError);
       const msg = (err as UnauthorizedError).message;
-      // Distinguished from the no-credentials case, and names the credential type.
+      // Server's specific reason is preserved...
+      expect(msg).toContain('Token expired');
+      // ...and augmented with actionable guidance naming the credential type,
+      // distinct from the no-credentials case.
       expect(msg).toContain('rejected');
       expect(msg).toContain('api_key');
       expect(msg).not.toContain('No credentials configured');
     }
+  });
+
+  it('falls back to a generic actionable 401 when the server gives no reason', async () => {
+    nock(TEST_BASE_URL).get(apiPath('/badkey401bare')).reply(401);
+
+    const client = makeClient({ apiKey: 'ulr_aaaaaaaaaaaaaaaaaaaa' });
+    const err = await client.get('/badkey401bare').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnauthorizedError);
+    expect((err as UnauthorizedError).message).toContain('Authentication failed');
+    expect((err as UnauthorizedError).message).toContain('rejected');
   });
 });
 

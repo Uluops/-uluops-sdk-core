@@ -481,16 +481,22 @@ export class HttpClient {
               'pass apiKey to the constructor, or provide sessionToken.'
             );
           }
-          // Credentials were sent but the server rejected them. Distinguish this
-          // from the no-credentials case so the caller knows the credential
-          // itself — not its absence — is the problem. Message is hand-crafted
-          // (no server-supplied text or URL), so it bypasses createErrorFromStatus
-          // and carries no credential-leak risk.
-          const requestId = response.headers.get('x-request-id') ?? undefined;
+          // Credentials were sent but the server rejected them. Preserve the
+          // server's (sanitized) reason via createHttpError, then augment it with
+          // actionable guidance that names the credential type and distinguishes
+          // this from the no-credentials case. The appended text is hand-crafted
+          // (no server data), so wrapping the sanitized base message introduces
+          // no credential-leak path.
+          const errorData = await response.json().catch(() => ({}));
+          const base = this.createHttpError(response.status, errorData, response.headers);
+          const serverMsg =
+            base.message && base.message !== `HTTP ${response.status}` ? base.message : null;
+          const guidance =
+            `the provided ${this.authStrategy.getType()} credential was rejected (401) — ` +
+            'it may be expired, revoked, or invalid. Verify the credential and its access to this resource.';
           throw new UnauthorizedError(
-            `Authentication failed: the provided ${this.authStrategy.getType()} credential was rejected (401). ` +
-            'It may be expired, revoked, or invalid. Verify the credential and that it has access to this resource.',
-            requestId,
+            serverMsg ? `${serverMsg} — ${guidance}` : `Authentication failed: ${guidance}`,
+            base.requestId,
           );
         }
         const errorData = await response.json().catch(() => ({}));
