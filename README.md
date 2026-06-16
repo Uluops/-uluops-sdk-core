@@ -226,7 +226,8 @@ The client automatically retries on transient errors (502, 503, 504, 429) and ne
 - **Mutations (POST/PUT/DELETE)**: Only retried when `retryMutations: true`
 - **Network errors**: Always retried (transient by nature)
 - **Backoff**: Exponential with jitter (base: 1s, max: 30s)
-- **401 handling**: Automatic token refresh with deduplication (one refresh at a time)
+- **`retries: 0`**: Makes exactly one attempt (no retries) and surfaces the real typed error (e.g. `NetworkError`) — it does **not** skip the request
+- **401 handling**: Automatic token refresh with deduplication (one refresh at a time). A 401 with no configured credentials throws a `UnauthorizedError` explaining how to set them; a 401 with credentials present preserves the server's reason and appends guidance that the credential may be expired, revoked, or invalid
 - **Visibility**: Use `onRetry` callback to observe retry attempts in real time
 
 ---
@@ -393,9 +394,12 @@ import { validateCredentials, isApiKey, API_KEY_PREFIX } from '@uluops/sdk-core/
 // Throws ValidationError if no credentials found
 validateCredentials({ apiKey: process.env.MY_API_KEY });
 
-// Check API key format
-isApiKey('ulr_abc123def456ghij'); // true
-isApiKey('invalid');               // false
+// Check API key format. Enforces the ulr_ prefix AND the minimum length
+// (MIN_API_KEY_LENGTH, 20 chars) so a value that passes isApiKey also passes
+// the ApiKeyAuth constructor.
+isApiKey('ulr_abc123def456ghij'); // true  (20 chars)
+isApiKey('invalid');              // false (no prefix)
+isApiKey('ulr_short');            // false (prefix but too short)
 ```
 
 #### Stored Credentials
