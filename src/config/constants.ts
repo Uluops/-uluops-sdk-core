@@ -40,6 +40,13 @@ export const JITTER_MAX = 0.2;
 export const API_KEY_PREFIX = 'ulr_';
 
 /**
+ * Minimum API key length (prefix + at least 16 chars). Shared by the
+ * `ApiKeyAuth` constructor and the `isApiKey` pre-flight check so a key that
+ * passes `isApiKey` will also pass the constructor.
+ */
+export const MIN_API_KEY_LENGTH = 20;
+
+/**
  * Config file paths
  */
 export const CONFIG_PATHS = {

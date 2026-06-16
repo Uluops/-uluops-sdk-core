@@ -9,7 +9,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { config as loadDotenv } from 'dotenv';
-import { CONFIG_PATHS, API_KEY_PREFIX } from './constants.js';
+import { CONFIG_PATHS, API_KEY_PREFIX, MIN_API_KEY_LENGTH } from './constants.js';
 import { ValidationError } from '../errors/errors.js';
 
 
@@ -356,10 +356,14 @@ export function loadConfig(options: {
 }
 
 /**
- * Check if credentials look like an API key
+ * Check if credentials look like an API key.
+ *
+ * Matches the `ApiKeyAuth` constructor's accept criteria (prefix + minimum
+ * length) so a value that passes this pre-flight check will not be rejected
+ * by the constructor as too short.
  */
 export function isApiKey(value: string): boolean {
-  return value.startsWith(API_KEY_PREFIX);
+  return value.startsWith(API_KEY_PREFIX) && value.length >= MIN_API_KEY_LENGTH;
 }
 
 /**

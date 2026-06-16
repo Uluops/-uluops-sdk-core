@@ -502,8 +502,8 @@ describe('loadConfig()', () => {
 // isApiKey()
 // ---------------------------------------------------------------------------
 describe('isApiKey()', () => {
-  it('should return true for string starting with ulr_', () => {
-    expect(isApiKey('ulr_something')).toBe(true);
+  it('should return true for a well-formed key (prefix + sufficient length)', () => {
+    expect(isApiKey('ulr_1234567890abcdef1234')).toBe(true);
     expect(isApiKey(TEST_API_KEY)).toBe(true);
   });
 
@@ -518,8 +518,15 @@ describe('isApiKey()', () => {
     expect(isApiKey('ul')).toBe(false);
   });
 
-  it('should return true for exact prefix only (ulr_)', () => {
-    expect(isApiKey('ulr_')).toBe(true);
+  it('should return false for prefixed-but-too-short keys (must match the constructor min length)', () => {
+    // These pass the prefix check but the ApiKeyAuth constructor rejects them
+    // as "too short" — isApiKey must agree so a pre-flight check is trustworthy.
+    expect(isApiKey('ulr_')).toBe(false);
+    expect(isApiKey('ulr_short')).toBe(false);
+    // Exactly one char under the 20-char minimum.
+    expect(isApiKey('ulr_123456789012345')).toBe(false);
+    // Exactly at the minimum (20 chars) passes.
+    expect(isApiKey('ulr_1234567890123456')).toBe(true);
   });
 });
 

@@ -2,6 +2,21 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.13.0] — 2026-06-16
+
+Ships as MINOR per the pre-1.0 versioning policy: bug fixes plus two contained
+behavioral changes (stricter `isApiKey`, reworded 401 messages). Surfaced by the
+registry-sdk `consumer-validate` run #40 (dx-validator).
+
+### Fixed
+
+- **`retries: 0` now makes one attempt instead of zero.** The retry loop used the retry budget directly as the attempt count, so `retries: 0` skipped the loop body entirely — the request was never sent and callers got a contextless `Error('Request failed')`. Attempt count is now floored at 1 (`Math.max(1, …)`), so `retries: 0` means "try once, do not retry" and surfaces the real typed error (e.g. `NetworkError` with the base URL and a curl hint, or the mapped HTTP error). Positive `retries` values are unchanged.
+
+### Changed
+
+- **401 errors now distinguish "credentials rejected" from "no credentials."** When credentials are present but the server returns 401, the SDK throws an actionable `UnauthorizedError` that names the credential type (`api_key` / `session`) and notes it may be expired, revoked, or invalid — instead of a generic "Authentication required". The message is hand-crafted (no server-supplied text), so it carries no credential-leak risk. The no-credentials message is unchanged except that the broken link to the private monorepo (which 404s for external consumers) has been removed; the actionable guidance remains.
+- **`isApiKey()` now enforces the minimum key length** (`MIN_API_KEY_LENGTH`, promoted to `@uluops/sdk-core/config` constants and shared with the `ApiKeyAuth` constructor). Previously it checked only the `ulr_` prefix, so values like `ulr_` or `ulr_short` passed the pre-flight check but were then rejected by the constructor as "too short." A value that passes `isApiKey` is now guaranteed to pass the constructor's length gate.
+
 ## [0.12.0] — 2026-06-14
 
 ### Added

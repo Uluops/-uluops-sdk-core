@@ -275,7 +275,11 @@ export class HttpClient {
       rawEnvelope?: boolean;
     }
   ): Promise<T> {
-    const maxAttempts = options?.retries ?? this.retries;
+    // `retries` is the retry budget; floor the attempt count at 1 so that
+    // `retries: 0` still makes one attempt (and surfaces the real error, e.g.
+    // NetworkError) rather than skipping the loop entirely and throwing a bare
+    // `Error('Request failed')` with no context.
+    const maxAttempts = Math.max(1, options?.retries ?? this.retries);
     const canRetry = method === 'GET' || (options?.retryMutations === true);
     let lastError: Error | null = null;
     let refreshAttempted = false;
@@ -470,11 +474,23 @@ export class HttpClient {
       this.checkRateLimitThreshold();
 
       if (!response.ok) {
-        if (response.status === 401 && !this.authStrategy) {
+        if (response.status === 401) {
+          if (!this.authStrategy) {
+            throw new UnauthorizedError(
+              'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
+              'pass apiKey to the constructor, or provide sessionToken.'
+            );
+          }
+          // Credentials were sent but the server rejected them. Distinguish this
+          // from the no-credentials case so the caller knows the credential
+          // itself — not its absence — is the problem. Message is hand-crafted
+          // (no server-supplied text or URL), so it bypasses createErrorFromStatus
+          // and carries no credential-leak risk.
+          const requestId = response.headers.get('x-request-id') ?? undefined;
           throw new UnauthorizedError(
-            'No credentials configured. Set ULUOPS_API_KEY environment variable, ' +
-            'pass apiKey to the constructor, or provide sessionToken. ' +
-            'See: https://github.com/uluops/uluops/tree/main/packages/sdk-core#authentication'
+            `Authentication failed: the provided ${this.authStrategy.getType()} credential was rejected (401). ` +
+            'It may be expired, revoked, or invalid. Verify the credential and that it has access to this resource.',
+            requestId,
           );
         }
         const errorData = await response.json().catch(() => ({}));

@@ -405,7 +405,27 @@ describe('HTTP error mapping', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(UnauthorizedError);
       expect((err as UnauthorizedError).message).toContain('No credentials configured');
-      expect((err as UnauthorizedError).message).toContain('authentication');
+      expect((err as UnauthorizedError).message).toContain('ULUOPS_API_KEY');
+      // The message must not point at the private monorepo (which 404s for
+      // external consumers).
+      expect((err as UnauthorizedError).message).not.toContain('github.com');
+    }
+  });
+
+  it('should give an actionable message when credentials are present but rejected (401)', async () => {
+    nock(TEST_BASE_URL).get(apiPath('/badkey401')).reply(401);
+
+    const client = makeClient({ apiKey: 'ulr_aaaaaaaaaaaaaaaaaaaa' });
+    try {
+      await client.get('/badkey401');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(UnauthorizedError);
+      const msg = (err as UnauthorizedError).message;
+      // Distinguished from the no-credentials case, and names the credential type.
+      expect(msg).toContain('rejected');
+      expect(msg).toContain('api_key');
+      expect(msg).not.toContain('No credentials configured');
     }
   });
 });
@@ -459,6 +479,19 @@ describe('retry logic', () => {
 
     const client = makeClient({ retries: 3 });
     await expect(client.get('/noretry400')).rejects.toThrow(ValidationError);
+  });
+
+  it('retries: 0 still makes one attempt and surfaces the typed error (not a bare "Request failed")', async () => {
+    const scope = nock(TEST_BASE_URL).get(apiPath('/once')).reply(503, { error: { message: 'down' } });
+
+    const client = makeClient({ retries: 0 });
+    const err = await client.get('/once').catch((e: unknown) => e);
+
+    // The request was actually attempted (previously retries:0 skipped the loop).
+    expect(scope.isDone()).toBe(true);
+    // And the real typed error surfaces — not the contextless fallback.
+    expect(err).toBeInstanceOf(ServiceUnavailableError);
+    expect((err as Error).message).not.toBe('Request failed');
   });
 });
 

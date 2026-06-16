@@ -8,7 +8,7 @@
  */
 
 import type { FetchClient } from './fetch-adapter.js';
-import { API_KEY_PREFIX } from '../config/constants.js';
+import { API_KEY_PREFIX, MIN_API_KEY_LENGTH } from '../config/constants.js';
 import { ValidationError, UnauthorizedError } from '../errors/errors.js';
 
 /**
@@ -50,11 +50,6 @@ export interface AuthConfig {
    */
   clearCredentialsAfterLogin?: boolean;
 }
-
-/**
- * Minimum API key length (prefix + at least 16 chars)
- */
-const MIN_API_KEY_LENGTH = 20;
 
 /**
  * Valid API key character pattern (alphanumeric, underscores, hyphens)
