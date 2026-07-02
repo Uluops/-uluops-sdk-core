@@ -13,15 +13,25 @@ import { sanitizeForDisplay, sanitizeString, stripControlChars } from '../utils/
  * Base API error class for all UluOps SDK errors
  */
 export class SdkApiError extends Error {
+  /**
+   * Server-supplied correlation id (from the `x-request-id` response header).
+   * Control characters are stripped at construction so a hostile or compromised
+   * API cannot inject CRLF/ANSI escapes into consumer logs — via either direct
+   * `.requestId` access or `toJSON()`. This is the server-controlled sibling of
+   * `message` and `details`, which are already sanitized; requestId was not.
+   */
+  public readonly requestId?: string;
+
   constructor(
     public readonly statusCode: number,
     message: string,
     public readonly code: string = ERROR_CODES.UNKNOWN,
     public readonly details?: Record<string, unknown>,
-    public readonly requestId?: string
+    requestId?: string
   ) {
     super(stripControlChars(message));
     this.name = 'SdkApiError';
+    this.requestId = requestId === undefined ? undefined : stripControlChars(requestId);
     if (typeof Error.captureStackTrace === 'function') {
       Error.captureStackTrace(this, this.constructor);
     }
@@ -49,7 +59,7 @@ export class SdkApiError extends Error {
       statusCode: this.statusCode,
       code: this.code,
       details: this.details ? sanitizeForDisplay(this.details) : undefined,
-      requestId: this.requestId,
+      requestId: this.requestId !== undefined ? sanitizeString(this.requestId, 0) : undefined,
     };
   }
 }
@@ -196,6 +206,54 @@ export class NetworkError extends SdkApiError {
 }
 
 /**
+ * Redirect rejected error (upstream returned a 3xx the SDK refuses to follow).
+ *
+ * The SDK issues every request with `redirect: 'manual'` and treats an
+ * `opaqueredirect` response as an error rather than following it. Per WHATWG
+ * fetch, a cross-origin redirect strips `Authorization` but NOT the request
+ * body, so a 3xx on the login POST would otherwise replay email+password to an
+ * attacker-controlled host. Surfacing this as its own type — distinct from
+ * `NetworkError` — matters for two reasons:
+ *
+ * 1. **Not retryable.** A configured origin issuing a redirect is a
+ *    configuration or man-in-the-middle signal, not a transient fault. Auto-
+ *    retrying (as the old `NetworkError` laundering did) is pointless and
+ *    hammers the redirect target.
+ * 2. **Actionable telemetry.** Consumers routing `onSecurityEvent` can alert on
+ *    `redirect_rejected` specifically; a generic `NetworkError` buries it among
+ *    ordinary connection failures.
+ *
+ * Replaces the pre-0.14.0 behavior where undici's redirect `TypeError` fell
+ * through `handleFetchError`'s `TypeError` branch into a retryable
+ * `NetworkError`. Detection is now a deterministic `response.type` check rather
+ * than an undici-internal error-string match.
+ */
+export class RedirectError extends SdkApiError {
+  constructor(baseUrl?: string) {
+    super(
+      0,
+      `Upstream issued an unexpected redirect${baseUrl ? ` from ${baseUrl}` : ''}. ` +
+        'The SDK does not follow redirects — the configured origin returned a 3xx, which can ' +
+        'indicate a man-in-the-middle, a moved endpoint, or a captive-portal interception. ' +
+        'The request was blocked before its body (which can carry credentials on login) was replayed. ' +
+        'Verify baseUrl and TLS.',
+      ERROR_CODES.REDIRECT_ERROR,
+      baseUrl ? { baseUrl } : undefined
+    );
+    this.name = 'RedirectError';
+  }
+
+  /**
+   * Redirects from a configured origin are a configuration/MITM signal, not a
+   * transient fault — never retry. (Explicit override guards against the base
+   * class's retryability logic changing.)
+   */
+  override isRetryable(): boolean {
+    return false;
+  }
+}
+
+/**
  * Request timeout error
  */
 export class TimeoutError extends SdkApiError {
@@ -334,6 +392,13 @@ export function isServiceUnavailableError(error: unknown): error is ServiceUnava
  */
 export function isNetworkError(error: unknown): error is NetworkError {
   return error instanceof NetworkError;
+}
+
+/**
+ * Type guard for RedirectError
+ */
+export function isRedirectError(error: unknown): error is RedirectError {
+  return error instanceof RedirectError;
 }
 
 /**

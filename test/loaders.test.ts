@@ -198,7 +198,10 @@ describe('loadStoredCredentials()', () => {
 
     expect(loadStoredCredentials()).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain('could not read credentials');
+    // Routed through createLogger: console.warn(`<ts> [sdk-core:config] WARN:`, message).
+    // The prefix/level tag is arg[0]; the message is arg[1].
+    expect(warnSpy.mock.calls[0][0]).toContain('[sdk-core:config] WARN:');
+    expect(warnSpy.mock.calls[0][1]).toContain('could not read credentials');
     warnSpy.mockRestore();
   });
 
@@ -211,7 +214,7 @@ describe('loadStoredCredentials()', () => {
 
     expect(loadStoredCredentials()).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain('could not read credentials file');
+    expect(warnSpy.mock.calls[0][1]).toContain('could not read credentials file');
     warnSpy.mockRestore();
   });
 
@@ -233,6 +236,7 @@ describe('loadStoredCredentials()', () => {
 
     expect(loadStoredCredentials()).toBeNull();
     expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[sdk-core:config] WARN:'),
       expect.stringContaining('malformed expiresAt')
     );
     warnSpy.mockRestore();

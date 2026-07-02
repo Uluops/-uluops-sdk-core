@@ -18,6 +18,7 @@ import {
   SdkApiError,
   createErrorFromStatus,
   NetworkError,
+  RedirectError,
   TimeoutError,
   UnauthorizedError,
   RateLimitError,
@@ -25,6 +26,7 @@ import {
 } from '../errors/errors.js';
 import { createAuthStrategy, type AuthStrategy, type AuthConfig } from './auth-strategy.js';
 import type { FetchClient } from './fetch-adapter.js';
+import type { AuthType, SecurityEvent, SecurityEventHandler } from './security-events.js';
 import { createLogger, type Logger } from '../utils/logger.js';
 import { sleep, parseRateLimitHeaders, type RateLimitInfo } from '../utils/helpers.js';
 
@@ -73,6 +75,19 @@ export interface HttpClientConfig {
    * Fires for both transient HTTP errors and network errors.
    */
   onRetry?: (info: { attempt: number; maxAttempts: number; error: Error; delayMs: number }) => void;
+  /**
+   * Called when a security-relevant event occurs — a rejected credential
+   * (`auth_failure`), a blocked upstream redirect (`redirect_rejected`), a
+   * failed token refresh (`token_refresh_failed`), or a live credential swap
+   * (`auth_strategy_replaced`). Gives the embedding application a single,
+   * structured, routable telemetry channel instead of scraping free-text logs
+   * or classifying thrown errors.
+   *
+   * Fired best-effort: the handler is not awaited, and a handler that throws is
+   * caught and logged — it never propagates into request flow. See
+   * {@link SecurityEvent} for the payload union.
+   */
+  onSecurityEvent?: SecurityEventHandler;
 }
 
 /**
@@ -161,6 +176,7 @@ export class HttpClient {
   private readonly rateLimitThreshold: number;
   private rateLimitWarningFired = false;
   private readonly onRetry?: (info: { attempt: number; maxAttempts: number; error: Error; delayMs: number }) => void;
+  private readonly onSecurityEvent?: SecurityEventHandler;
 
   constructor(config: HttpClientConfig) {
     this.logger = createLogger(config.loggerPrefix, config.debug ?? false);
@@ -168,6 +184,7 @@ export class HttpClient {
     this.onRateLimitApproaching = config.onRateLimitApproaching;
     this.rateLimitThreshold = config.rateLimitThreshold ?? 0.1;
     this.onRetry = config.onRetry;
+    this.onSecurityEvent = config.onSecurityEvent;
     this.baseUrl = config.baseUrl;
     this.authBaseUrl = config.authBaseUrl ?? config.baseUrl;
     HttpClient.validateBaseUrl(this.baseUrl);
@@ -216,8 +233,13 @@ export class HttpClient {
             headers: this.defaultHeaders,
             body: JSON.stringify(body),
             signal: controller.signal,
-            redirect: 'error',
+            redirect: 'manual',
           });
+
+          // Reject redirects before touching the response. This is the login/
+          // refresh POST — its body carries email+password or a refresh token,
+          // which a followed cross-origin redirect would replay.
+          this.assertNotRedirect(response);
 
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
@@ -376,9 +398,21 @@ export class HttpClient {
       await this.refreshPromise;
       return true;
     } catch (refreshError) {
-      this.logger.debug(
+      // warn, not debug: a refresh FAILURE (expired/revoked/stolen credential
+      // rejected at re-auth) is security-relevant and must be visible in
+      // production, where debug is off. The attempt log above stays at debug to
+      // avoid noise on every healthy token expiry. refreshError.message is
+      // sanitized at construction (createErrorFromStatus/NetworkError), so no
+      // credential can reach this line.
+      this.logger.warn(
         `Token refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`
       );
+      this.emitSecurityEvent({
+        type: 'token_refresh_failed',
+        timestamp: new Date().toISOString(),
+        message: 'Session token refresh (re-login) failed — the session credential was rejected at re-authentication.',
+        authType: 'session',
+      });
       return false;
     }
   }
@@ -466,8 +500,10 @@ export class HttpClient {
         headers,
         body,
         signal: controller.signal,
-        redirect: 'error',
+        redirect: 'manual',
       });
+
+      this.assertNotRedirect(response);
 
       this.logger.debug(`${method} ${endpoint} -> ${response.status}`);
       this.lastRateLimitInfo = parseRateLimitHeaders(response.headers);
@@ -494,6 +530,14 @@ export class HttpClient {
           const guidance =
             `the provided ${this.authStrategy.getType()} credential was rejected (401) — ` +
             'it may be expired, revoked, or invalid. Verify the credential and its access to this resource.';
+          this.emitSecurityEvent({
+            type: 'auth_failure',
+            timestamp: new Date().toISOString(),
+            message: `Server rejected the ${this.authStrategy.getType()} credential with 401.`,
+            authType: this.authStrategy.getType(),
+            statusCode: response.status,
+            requestId: base.requestId,
+          });
           throw new UnauthorizedError(
             serverMsg ? `${serverMsg} — ${guidance}` : `Authentication failed: ${guidance}`,
             base.requestId,
@@ -579,8 +623,10 @@ export class HttpClient {
         headers,
         body: options?.body,
         signal: controller.signal,
-        redirect: 'error',
+        redirect: 'manual',
       });
+
+      this.assertNotRedirect(response);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -733,9 +779,75 @@ export class HttpClient {
 
   /**
    * Replace the auth strategy (e.g., after login obtains a session token).
+   *
+   * This is an intentional trusted-caller capability: the login flow swaps in a
+   * session token here. It performs no authorization check of its own — any code
+   * holding the client reference can replace the credential the client
+   * exercises. That is by design (the SDK's trust boundary is the process; see
+   * SCOPE.md), but because a swap changes which credential every subsequent
+   * request carries, it emits an `auth_strategy_replaced` security event so
+   * embedders can observe and correlate credential changes.
    */
   setAuthStrategy(strategy: AuthStrategy | null): void {
+    const previousType: AuthType = this.authStrategy?.getType() ?? 'none';
+    const newType: AuthType = strategy?.getType() ?? 'none';
     this.authStrategy = strategy;
+    this.emitSecurityEvent({
+      type: 'auth_strategy_replaced',
+      timestamp: new Date().toISOString(),
+      message: `Auth strategy replaced (${previousType} -> ${newType}).`,
+      previousType,
+      newType,
+    });
+  }
+
+  /**
+   * Deliver a security event to the consumer handler, best-effort.
+   *
+   * Never throws into the caller: a handler that throws is caught and logged so
+   * a faulty telemetry sink cannot break request flow. The handler is not
+   * awaited — events are fire-and-forget.
+   */
+  private emitSecurityEvent(event: SecurityEvent): void {
+    if (!this.onSecurityEvent) return;
+    try {
+      this.onSecurityEvent(event);
+    } catch (err) {
+      this.logger.warn(
+        `onSecurityEvent handler threw and was ignored: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
+   * Reject an upstream redirect. With `redirect: 'manual'`, standards-compliant
+   * fetch returns a 3xx as an `opaqueredirect` (masked to status 0, unreadable)
+   * rather than following it. We detect that deterministically here — no
+   * undici-internal error-string matching — emit a `redirect_rejected` event,
+   * and throw {@link RedirectError} so the request is not retried and the
+   * redirect target never sees the body.
+   *
+   * Two signals, because HTTP stacks differ: `type === 'opaqueredirect'` is what
+   * real undici/browsers report under `manual` mode; the 3xx status-range check
+   * is a fallback for any adapter or test double that surfaces the raw redirect
+   * status instead of masking it. A genuine (non-redirect) response never lands
+   * in the 300–399 range here, so the fallback has no false-positive surface.
+   */
+  private assertNotRedirect(response: Response): void {
+    const isRedirect =
+      response.type === 'opaqueredirect' ||
+      (response.status >= 300 && response.status < 400);
+    if (isRedirect) {
+      this.emitSecurityEvent({
+        type: 'redirect_rejected',
+        timestamp: new Date().toISOString(),
+        message:
+          `Upstream returned a redirect from ${this.baseUrl}; blocked before replaying the request. ` +
+          'A redirect from a configured API origin can indicate MITM, a moved endpoint, or a captive portal.',
+        baseUrl: this.baseUrl,
+      });
+      throw new RedirectError(this.baseUrl);
+    }
   }
 
   /**

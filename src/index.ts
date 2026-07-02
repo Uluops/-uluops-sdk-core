@@ -8,6 +8,17 @@ export {
   type AuthConfig,
 } from './http/auth-strategy.js';
 export type { FetchClient } from './http/fetch-adapter.js';
+export type {
+  SecurityEvent,
+  SecurityEventType,
+  SecurityEventHandler,
+  SecurityEventBase,
+  AuthType,
+  AuthFailureEvent,
+  RedirectRejectedEvent,
+  TokenRefreshFailedEvent,
+  AuthStrategyReplacedEvent,
+} from './http/security-events.js';
 
 // Errors
 export {
@@ -22,6 +33,7 @@ export {
   RateLimitError,
   ServiceUnavailableError,
   NetworkError,
+  RedirectError,
   TimeoutError,
   createErrorFromStatus,
   isSdkApiError,
@@ -35,6 +47,7 @@ export {
   isRateLimitError,
   isServiceUnavailableError,
   isNetworkError,
+  isRedirectError,
   isTimeoutError,
 } from './errors/errors.js';
 

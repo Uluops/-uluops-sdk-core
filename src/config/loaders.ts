@@ -11,6 +11,14 @@ import { homedir, platform } from 'node:os';
 import { config as loadDotenv } from 'dotenv';
 import { CONFIG_PATHS, API_KEY_PREFIX, MIN_API_KEY_LENGTH } from './constants.js';
 import { ValidationError } from '../errors/errors.js';
+import { createLogger } from '../utils/logger.js';
+
+// Config credential-load anomalies are routed through the SDK logger rather
+// than raw console.warn so consumers have a single, structured interception
+// surface (level tag + prefix). createLogger's warn/error emit unconditionally
+// regardless of the enabled flag, and the debug flag is not yet resolved this
+// early in bootstrap, so `enabled: false` is correct here.
+const logger = createLogger('[sdk-core:config]', false);
 
 
 /**
@@ -150,8 +158,8 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
         const stat = statSync(credPath);
         const mode = stat.mode & 0o777;
         if (mode & 0o044) {
-          console.warn(
-            `[sdk-core] Warning: credentials file is readable by other users (mode ${mode.toString(8)}). ` +
+          logger.warn(
+            `credentials file is readable by other users (mode ${mode.toString(8)}). ` +
             'Run: chmod 600 ~/.uluops/credentials.json'
           );
         }
@@ -181,8 +189,8 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
     if (profileCreds.type === 'session' && profileCreds.expiresAt) {
       const expiresAt = new Date(profileCreds.expiresAt);
       if (isNaN(expiresAt.getTime())) {
-        console.warn(
-          '[sdk-core] Warning: credentials.json has malformed expiresAt — treating session as expired. ' +
+        logger.warn(
+          'credentials.json has malformed expiresAt — treating session as expired. ' +
           'Re-authenticate to refresh.'
         );
         return null;
@@ -196,21 +204,21 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
     const result: Partial<Credentials> = {};
     if (profileCreds.apiKey !== undefined) {
       if (typeof profileCreds.apiKey !== 'string' || !profileCreds.apiKey.startsWith(API_KEY_PREFIX)) {
-        console.warn('[sdk-core] Warning: credentials.json contains invalid apiKey format, ignoring');
+        logger.warn('credentials.json contains invalid apiKey format, ignoring');
       } else {
         result.apiKey = profileCreds.apiKey;
       }
     }
     if (profileCreds.sessionToken !== undefined) {
       if (typeof profileCreds.sessionToken !== 'string' || profileCreds.sessionToken.length === 0) {
-        console.warn('[sdk-core] Warning: credentials.json contains invalid sessionToken, ignoring');
+        logger.warn('credentials.json contains invalid sessionToken, ignoring');
       } else {
         result.sessionToken = profileCreds.sessionToken;
       }
     }
     if (profileCreds.email !== undefined) {
       if (typeof profileCreds.email !== 'string' || profileCreds.email.length === 0) {
-        console.warn('[sdk-core] Warning: credentials.json contains invalid email, ignoring');
+        logger.warn('credentials.json contains invalid email, ignoring');
       } else {
         result.email = profileCreds.email;
       }
@@ -222,8 +230,8 @@ export function loadStoredCredentials(profile = 'default'): Partial<Credentials>
     // their config is corrupt, then fall through to other credential sources.
     // Avoid leaking file path or parse error details (could contain file content).
     const reason = error instanceof Error ? error.constructor.name : 'unknown error';
-    console.warn(
-      `[sdk-core] Warning: could not read credentials file (${reason}). ` +
+    logger.warn(
+      `could not read credentials file (${reason}). ` +
       'Check ~/.uluops/credentials.json is valid JSON. Falling back to environment variables.'
     );
     return null;
