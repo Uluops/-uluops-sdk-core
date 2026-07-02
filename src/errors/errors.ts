@@ -13,15 +13,25 @@ import { sanitizeForDisplay, sanitizeString, stripControlChars } from '../utils/
  * Base API error class for all UluOps SDK errors
  */
 export class SdkApiError extends Error {
+  /**
+   * Server-supplied correlation id (from the `x-request-id` response header).
+   * Control characters are stripped at construction so a hostile or compromised
+   * API cannot inject CRLF/ANSI escapes into consumer logs — via either direct
+   * `.requestId` access or `toJSON()`. This is the server-controlled sibling of
+   * `message` and `details`, which are already sanitized; requestId was not.
+   */
+  public readonly requestId?: string;
+
   constructor(
     public readonly statusCode: number,
     message: string,
     public readonly code: string = ERROR_CODES.UNKNOWN,
     public readonly details?: Record<string, unknown>,
-    public readonly requestId?: string
+    requestId?: string
   ) {
     super(stripControlChars(message));
     this.name = 'SdkApiError';
+    this.requestId = requestId === undefined ? undefined : stripControlChars(requestId);
     if (typeof Error.captureStackTrace === 'function') {
       Error.captureStackTrace(this, this.constructor);
     }
@@ -49,7 +59,7 @@ export class SdkApiError extends Error {
       statusCode: this.statusCode,
       code: this.code,
       details: this.details ? sanitizeForDisplay(this.details) : undefined,
-      requestId: this.requestId,
+      requestId: this.requestId !== undefined ? sanitizeString(this.requestId, 0) : undefined,
     };
   }
 }

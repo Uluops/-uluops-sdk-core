@@ -51,6 +51,21 @@ describe('SdkApiError', () => {
     expect(err.stack).toBeDefined();
     expect(err.stack).toContain('SdkApiError');
   });
+
+  it('should strip control chars from requestId at construction (direct access)', () => {
+    // A hostile/compromised server can put CRLF/ANSI in the x-request-id header.
+    // The raw value must never survive onto the property a consumer reads directly.
+    // stripControlChars replaces each control char (CR, LF, ESC, BEL) with a space.
+    const err = new SdkApiError(500, 'boom', 'X', undefined, 'req\r\n\x1b[31mINJECTED\x07');
+    expect(err.requestId).toBe('req   [31mINJECTED ');
+    // eslint-disable-next-line no-control-regex
+    expect(err.requestId).not.toMatch(/[\r\n\x00-\x1F\x7F]/);
+  });
+
+  it('should preserve a clean requestId unchanged', () => {
+    const err = new SdkApiError(500, 'boom', 'X', undefined, 'req-abc-123');
+    expect(err.requestId).toBe('req-abc-123');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -289,6 +304,19 @@ describe('toJSON()', () => {
     const err = new SdkApiError(404, 'nope');
     const json = err.toJSON();
     expect(json.details).toBeUndefined();
+  });
+
+  it('should sanitize a hostile requestId in the serialized output', () => {
+    const err = new SdkApiError(500, 'fail', 'X', undefined, 'req\r\nFORGED: log line');
+    const json = err.toJSON();
+    // eslint-disable-next-line no-control-regex
+    expect(json.requestId as string).not.toMatch(/[\r\n\x00-\x1F\x7F]/);
+    expect(json.requestId).toBe('req  FORGED: log line');
+  });
+
+  it('should keep requestId undefined in output when absent', () => {
+    const err = new SdkApiError(500, 'fail');
+    expect(err.toJSON().requestId).toBeUndefined();
   });
 
   it('should redact sensitive keys in details', () => {
