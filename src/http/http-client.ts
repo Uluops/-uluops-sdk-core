@@ -376,7 +376,13 @@ export class HttpClient {
       await this.refreshPromise;
       return true;
     } catch (refreshError) {
-      this.logger.debug(
+      // warn, not debug: a refresh FAILURE (expired/revoked/stolen credential
+      // rejected at re-auth) is security-relevant and must be visible in
+      // production, where debug is off. The attempt log above stays at debug to
+      // avoid noise on every healthy token expiry. refreshError.message is
+      // sanitized at construction (createErrorFromStatus/NetworkError), so no
+      // credential can reach this line.
+      this.logger.warn(
         `Token refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`
       );
       return false;

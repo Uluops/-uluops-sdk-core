@@ -658,6 +658,39 @@ describe('401 token refresh', () => {
     await expect(client.get('/protected2')).rejects.toThrow(UnauthorizedError);
   });
 
+  it('should warn (not silently debug) on refresh failure at the default log level, without leaking credentials', async () => {
+    // #4 (detectability): a refresh FAILURE — revoked/stolen/expired credential
+    // rejected at re-auth — must be visible in production (debug off), not
+    // swallowed at debug level.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    nock(TEST_BASE_URL)
+      .get(apiPath('/refresh-warn'))
+      .reply(401, { error: { message: 'expired' } });
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'))
+      .reply(401, { error: { message: 'bad credentials' } });
+
+    const client = makeClient({
+      apiKey: undefined,
+      email: 'a@b.com',
+      password: 'sup3rsecret',
+      retries: 1,
+      // note: no debug flag → default (off); warn must still emit
+    });
+
+    await expect(client.get('/refresh-warn')).rejects.toThrow(UnauthorizedError);
+
+    // Message is the 2nd console.warn arg (logger prepends the prefix/level tag).
+    const refreshWarn = warnSpy.mock.calls.find(
+      (c) => typeof c[1] === 'string' && (c[1] as string).includes('Token refresh failed')
+    );
+    expect(refreshWarn).toBeDefined();
+    // The attempt log stays at debug — no credential must appear in any warn line.
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('sup3rsecret');
+    warnSpy.mockRestore();
+  });
+
   it('should propagate refresh failure to all concurrent waiters', async () => {
     // Two concurrent requests both get 401
     nock(TEST_BASE_URL)
