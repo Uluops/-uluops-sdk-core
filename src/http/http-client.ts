@@ -238,8 +238,9 @@ export class HttpClient {
 
           // Reject redirects before touching the response. This is the login/
           // refresh POST — its body carries email+password or a refresh token,
-          // which a followed cross-origin redirect would replay.
-          this.assertNotRedirect(response);
+          // which a followed cross-origin redirect would replay. This site hits
+          // authBaseUrl, so report that origin (not baseUrl).
+          this.assertNotRedirect(response, this.authBaseUrl);
 
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
@@ -308,7 +309,7 @@ export class HttpClient {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const result = await this.doFetch<T>(method, endpoint, data, options);
+        const result = await this.doFetch<T>(method, endpoint, data, options, refreshAttempted);
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error), { cause: error });
@@ -412,6 +413,10 @@ export class HttpClient {
         timestamp: new Date().toISOString(),
         message: 'Session token refresh (re-login) failed — the session credential was rejected at re-authentication.',
         authType: 'session',
+        // Carry the server correlation id when the refresh failed with a server
+        // error that has one (already control-char stripped at SdkApiError
+        // construction); undefined for network failures or malformed responses.
+        requestId: refreshError instanceof SdkApiError ? refreshError.requestId : undefined,
       });
       return false;
     }
@@ -478,7 +483,8 @@ export class HttpClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean }
+    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean },
+    refreshAttempted = false
   ): Promise<T> {
     const url = this.buildRequestUrl(endpoint, method, data, options?.params);
 
@@ -503,7 +509,7 @@ export class HttpClient {
         redirect: 'manual',
       });
 
-      this.assertNotRedirect(response);
+      this.assertNotRedirect(response, this.baseUrl);
 
       this.logger.debug(`${method} ${endpoint} -> ${response.status}`);
       this.lastRateLimitInfo = parseRateLimitHeaders(response.headers);
@@ -530,14 +536,29 @@ export class HttpClient {
           const guidance =
             `the provided ${this.authStrategy.getType()} credential was rejected (401) — ` +
             'it may be expired, revoked, or invalid. Verify the credential and its access to this resource.';
-          this.emitSecurityEvent({
-            type: 'auth_failure',
-            timestamp: new Date().toISOString(),
-            message: `Server rejected the ${this.authStrategy.getType()} credential with 401.`,
-            authType: this.authStrategy.getType(),
-            statusCode: response.status,
-            requestId: base.requestId,
-          });
+          // Emit auth_failure only when THIS 401 will NOT be transparently
+          // recovered. A refresh helps only if the strategy can refresh AND we
+          // have not already spent our one refresh on this request — hence the
+          // `refreshAttempted` guard, not a bare `canRefresh()`. Cases:
+          //   - api key / session with no refresh path (canRefresh() false) -> emit.
+          //   - refreshable session, first 401, refresh not yet tried -> suppress
+          //     (the re-login owns the outcome: silent on success, or
+          //     token_refresh_failed on failure — no double-signal).
+          //   - refreshable session, 401 AFTER a successful refresh
+          //     (refreshAttempted true, refresh won't be retried) -> emit. Without
+          //     the refreshAttempted guard this second, genuinely-unrecoverable
+          //     401 would emit nothing at all (silent channel), which is worst for
+          //     a long-lived non-clearing session (clearCredentialsAfterLogin:false).
+          if (!this.authStrategy.canRefresh() || refreshAttempted) {
+            this.emitSecurityEvent({
+              type: 'auth_failure',
+              timestamp: new Date().toISOString(),
+              message: `Server rejected the ${this.authStrategy.getType()} credential with 401.`,
+              authType: this.authStrategy.getType(),
+              statusCode: response.status,
+              requestId: base.requestId,
+            });
+          }
           throw new UnauthorizedError(
             serverMsg ? `${serverMsg} — ${guidance}` : `Authentication failed: ${guidance}`,
             base.requestId,
@@ -626,11 +647,27 @@ export class HttpClient {
         redirect: 'manual',
       });
 
-      this.assertNotRedirect(response);
+      this.assertNotRedirect(response, this.baseUrl);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw this.createHttpError(response.status, errorData, response.headers);
+        const httpError = this.createHttpError(response.status, errorData, response.headers);
+        // requestRaw/requestBinary run through here and do NOT refresh on 401 (no
+        // resilience features — see their JSDoc), so a 401 is always a terminal,
+        // unrecoverable rejection. Emit auth_failure for parity with doFetch so the
+        // security channel is not blind to credential rejection on these public
+        // methods. No refreshAttempted gate needed — there is no refresh path here.
+        if (response.status === 401 && this.authStrategy) {
+          this.emitSecurityEvent({
+            type: 'auth_failure',
+            timestamp: new Date().toISOString(),
+            message: `Server rejected the ${this.authStrategy.getType()} credential with 401.`,
+            authType: this.authStrategy.getType(),
+            statusCode: response.status,
+            requestId: httpError.requestId,
+          });
+        }
+        throw httpError;
       }
 
       return response;
@@ -810,14 +847,47 @@ export class HttpClient {
    */
   private emitSecurityEvent(event: SecurityEvent): void {
     if (!this.onSecurityEvent) return;
+    const ignore = (err: unknown): void => {
+      // The isolation boundary must hold even if the consumer's own logger
+      // throws — otherwise the warn below would re-raise (synchronously, or as an
+      // unhandled rejection inside the async .catch) the very failure we are
+      // absorbing. Swallow anything a failing logger emits.
+      try {
+        this.logger.warn(
+          `onSecurityEvent handler failed and was ignored: ${err instanceof Error ? err.message : String(err)}`
+        );
+      } catch {
+        /* nothing we can safely do if logging itself fails */
+      }
+    };
     try {
-      this.onSecurityEvent(event);
+      // The handler is typed `(event) => void`, but TypeScript's void-assignability
+      // rule lets consumers pass an `async` handler (Sentry/SIEM sinks usually are).
+      // A synchronous try/catch cannot catch a rejection that happens after the
+      // handler's first `await`; that would surface as an unhandled rejection and
+      // crash the process on Node >= 15 — precisely during a security event, and
+      // in violation of the documented isolation guarantee. So if the handler
+      // returns a thenable, adopt it and route any rejection to a logged warning.
+      // Still fire-and-forget: the SDK never awaits telemetry.
+      const result: unknown = this.onSecurityEvent(event);
+      if (result && typeof (result as { then?: unknown }).then === 'function') {
+        void Promise.resolve(result).catch(ignore);
+      }
     } catch (err) {
-      this.logger.warn(
-        `onSecurityEvent handler threw and was ignored: ${err instanceof Error ? err.message : String(err)}`
-      );
+      ignore(err);
     }
   }
+
+  /**
+   * HTTP status codes a redirect-following client would actually follow. Used
+   * only by the fallback path below. Deliberately NOT the whole 300–399 range:
+   * 300 (Multiple Choices, no automatic follow), 304 (Not Modified — a normal
+   * conditional-GET response, extremely common with ETags/If-None-Match and
+   * CDNs), and 305/306 (deprecated/unused) are in the 3xx band but are NOT
+   * redirects. Treating them as redirects would turn every 304 into a spurious
+   * RedirectError and a false "MITM" security event.
+   */
+  private static readonly REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
   /**
    * Reject an upstream redirect. With `redirect: 'manual'`, standards-compliant
@@ -828,25 +898,29 @@ export class HttpClient {
    * redirect target never sees the body.
    *
    * Two signals, because HTTP stacks differ: `type === 'opaqueredirect'` is what
-   * real undici/browsers report under `manual` mode; the 3xx status-range check
-   * is a fallback for any adapter or test double that surfaces the raw redirect
-   * status instead of masking it. A genuine (non-redirect) response never lands
-   * in the 300–399 range here, so the fallback has no false-positive surface.
+   * real undici/browsers report under `manual` mode (the production path); the
+   * status check is a fallback for any adapter or test double that surfaces the
+   * raw redirect status instead of masking it — and it matches only true
+   * redirect codes ({@link REDIRECT_STATUSES}), never 304 and friends.
+   *
+   * @param origin - the configured origin actually being contacted at this call
+   *   site (baseUrl for API requests, authBaseUrl for the login/refresh POST),
+   *   so the event and error name the host that really redirected.
    */
-  private assertNotRedirect(response: Response): void {
+  private assertNotRedirect(response: Response, origin: string): void {
     const isRedirect =
       response.type === 'opaqueredirect' ||
-      (response.status >= 300 && response.status < 400);
+      HttpClient.REDIRECT_STATUSES.has(response.status);
     if (isRedirect) {
       this.emitSecurityEvent({
         type: 'redirect_rejected',
         timestamp: new Date().toISOString(),
         message:
-          `Upstream returned a redirect from ${this.baseUrl}; blocked before replaying the request. ` +
+          `Upstream returned a redirect from ${origin}; blocked before replaying the request. ` +
           'A redirect from a configured API origin can indicate MITM, a moved endpoint, or a captive portal.',
-        baseUrl: this.baseUrl,
+        baseUrl: origin,
       });
-      throw new RedirectError(this.baseUrl);
+      throw new RedirectError(origin);
     }
   }
 
@@ -1001,6 +1075,19 @@ export class HttpClient {
   private static validateBaseUrl(url: string): void {
     try {
       const parsed = new URL(url);
+      // Reject URL-embedded credentials (https://user:pass@host). This SDK
+      // authenticates via Authorization headers (apiKey / session / email+password),
+      // never via URL user-info — and a credential smuggled into the URL would leak
+      // through the otherwise-credential-safe error and event surfaces that name the
+      // origin (RedirectError.message/details, redirect_rejected.baseUrl, and the
+      // pre-existing NetworkError.message). Fail fast with a clear message rather
+      // than silently stripping something the caller might be relying on.
+      if (parsed.username || parsed.password) {
+        throw new Error(
+          'baseUrl must not contain embedded user credentials (user:password@host). ' +
+          'Authenticate with the apiKey, sessionToken, or email/password options instead.'
+        );
+      }
       if (parsed.protocol === 'https:') return;
       const host = parsed.hostname;
       const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';

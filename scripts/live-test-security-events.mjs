@@ -115,7 +115,8 @@ try {
       sessionToken: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdGFsZSJ9.stale_sig',
     });
     // GET /protected → 401 → refresh via POST /auth/login → 401 → refresh fails.
-    // (Also legitimately emits auth_failure for the initial 401 — that's accurate.)
+    // A refreshable session suppresses auth_failure (the refresh path owns the
+    // signal), so token_refresh_failed is the only event here.
     await client.get('/protected').catch(() => {});
     assert(events.some((e) => e.type === 'token_refresh_failed' && e.authType === 'session'),
       'expected token_refresh_failed with authType=session');

@@ -34,6 +34,7 @@
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

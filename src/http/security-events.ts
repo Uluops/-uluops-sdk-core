@@ -29,9 +29,13 @@
  *
  * ## Delivery contract
  *
- * Events are best-effort and fire-and-forget. A handler that throws is caught and
- * logged — it never propagates into request flow. Handlers should be fast and
- * non-blocking; the SDK does not await them.
+ * Events are best-effort and fire-and-forget. A handler that fails — whether it
+ * throws synchronously or returns a rejected promise (async handlers are
+ * permitted; telemetry sinks usually are) — is caught and logged; it never
+ * propagates into request flow and never surfaces as an unhandled rejection. The
+ * SDK does not await handlers, so a slow handler cannot block a request — but it
+ * also cannot delay one, so buffer/flush inside your sink rather than relying on
+ * back-pressure here.
  */
 
 /** Discriminator for {@link SecurityEvent}. */
@@ -55,12 +59,17 @@ export interface SecurityEventBase {
 }
 
 /**
- * The server rejected sent credentials with a 401. Distinguishes an active
- * rejection (a credential was presented and refused — possibly expired, revoked,
- * or a substituted key that the server does not accept) from the no-credentials
- * case. This is the SDK-observable signal for the "credential substitution"
- * threat: a swapped-but-invalid credential surfaces here; a swapped-but-valid one
- * is, by definition, indistinguishable from legitimate use at the client.
+ * The server rejected a sent credential with a 401 that is NOT transparently
+ * recoverable — an API key, or a session with no refresh path. A 401 on a
+ * refreshable session is not reported here: it triggers a re-login, which either
+ * succeeds silently (routine token rotation) or fails and emits
+ * {@link TokenRefreshFailedEvent} instead. This keeps `auth_failure` meaning
+ * "a credential was refused and could not be recovered" rather than firing on
+ * every ordinary session expiry.
+ *
+ * This is the SDK-observable signal for the "credential substitution" threat: a
+ * swapped-but-invalid key surfaces here; a swapped-but-valid one is, by
+ * definition, indistinguishable from legitimate use at the client.
  */
 export interface AuthFailureEvent extends SecurityEventBase {
   type: 'auth_failure';
@@ -93,6 +102,14 @@ export interface TokenRefreshFailedEvent extends SecurityEventBase {
   type: 'token_refresh_failed';
   /** Always `session` — only session strategies refresh. */
   authType: 'session';
+  /**
+   * Server correlation id (`x-request-id`) from the refresh response, if the
+   * refresh failed with a server error that carried one — control-char stripped.
+   * Absent when the refresh failed without a correlatable server response (e.g. a
+   * network error, or a login response missing the token). Lets a responder join
+   * the refresh rejection to the server's auth logs.
+   */
+  requestId?: string;
 }
 
 /**

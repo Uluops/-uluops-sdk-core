@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@uluops/sdk-core.svg)](https://www.npmjs.com/package/@uluops/sdk-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
@@ -105,7 +105,7 @@ This package extracts the shared infrastructure that was duplicated across `@ulu
 
 ## Prerequisites
 
-- Node.js 18.0.0 or higher (uses native `fetch`)
+- Node.js 20.0.0 or higher (uses native `fetch`)
 - TypeScript 5.0+ (for TypeScript users)
 - ESM project (`"type": "module"` in package.json) — this package is ESM-only
 
@@ -359,7 +359,7 @@ All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`,
 #### Error Factory
 
 ```typescript
-import { createErrorFromStatus } from '@uluops/sdk-core/errors';
+import { createErrorFromStatus, NotFoundError } from '@uluops/sdk-core/errors';
 
 // Signature: createErrorFromStatus(statusCode, message, code?, details?, requestId?)
 const error = createErrorFromStatus(404, 'Project not found', 'NOT_FOUND', { id: '123' });

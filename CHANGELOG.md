@@ -30,6 +30,16 @@ routing) alongside the new observability work.
   `AuthType`, and the four event interfaces. (Detectability finding `d2b84bc4`;
   also resolves the observability residue of `848a10e1` and the CD-1 observability
   leg of `251a2d7c`.)
+  - **`auth_failure` fires only for non-recoverable rejections.** A 401 on a
+    refreshable session does not emit it — the re-login path owns that outcome
+    (silent on success, `token_refresh_failed` on failure). This keeps
+    `auth_failure` meaning "a credential was refused and could not be recovered"
+    instead of paging on every routine session-token rotation.
+  - **Async handlers are supported and isolated.** Although the handler is typed
+    `(event) => void`, a returned promise is adopted and its rejection routed to a
+    logged warning — so an `async` telemetry sink that throws after an `await`
+    cannot surface as an unhandled rejection (which would crash the process on
+    Node ≥ 15). The SDK still never awaits the handler.
 - **`RedirectError` (exported, with `isRedirectError` guard).** A dedicated,
   **non-retryable** error for an upstream 3xx the SDK refuses to follow.
 
@@ -49,7 +59,11 @@ routing) alongside the new observability work.
   login) is replayed. Detection no longer depends on matching an undici-internal
   error string. **Migration:** code that caught redirects as `NetworkError` should
   now catch `RedirectError` (or `isRedirectError(e)`); redirects are no longer
-  retried. (Finding `bdee74f9`.)
+  retried. (Finding `bdee74f9`.) The status fallback matches only true redirect
+  codes (301/302/303/307/308), so a `304 Not Modified` (conditional GET / CDN
+  cache hit) passes through as a normal response and never trips a false redirect.
+  When `authBaseUrl` differs from `baseUrl`, a redirect on the login/refresh POST
+  is reported against `authBaseUrl` (the origin actually contacted).
 - **`setAuthStrategy` emits an `auth_strategy_replaced` security event.** The
   method remains an intentional, ungated trusted-caller capability (the login flow
   swaps in a session token) — its trust boundary is the process — but because the
@@ -59,6 +73,14 @@ routing) alongside the new observability work.
 
 ### Security
 
+- **Reject `baseUrl`/`authBaseUrl` containing embedded user credentials**
+  (`https://user:pass@host`). The SDK authenticates via `Authorization` headers,
+  never via URL user-info, and a credential smuggled into the URL would leak
+  through the origin-naming error and event surfaces (`RedirectError`,
+  `redirect_rejected`, and the pre-existing `NetworkError` message). `validateBaseUrl`
+  now fails fast with a clear message, keeping the "events are credential-safe,
+  log them verbatim" guarantee unconditional. (Surfaced by the 0.14.0 security
+  audit; CWE-200.)
 - **Sanitize the server-controlled `requestId`.** `SdkApiError` now strips control
   characters from the `x-request-id` value at construction, closing a CRLF/ANSI
   log-injection path via `.requestId` access and `toJSON()` — the server-controlled
