@@ -2,6 +2,87 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.14.0] — 2026-07-02
+
+Ships as MINOR per the pre-1.0 versioning policy: additive API (`onSecurityEvent`,
+`RedirectError`) plus one contained behavioral change (redirects now throw a
+distinct non-retryable error instead of a retryable `NetworkError`). Driven by the
+`attack-path-audit` run #19, whose detectability lens scored lowest — the SDK's
+highest-value attacker indicators were the least observable. This release folds in
+the two unreleased 0.13.x hardening commits (requestId sanitization, logger
+routing) alongside the new observability work.
+
+### Added
+
+- **Structured security-event channel (`onSecurityEvent`).** A single, optional,
+  discriminated-union callback that delivers the security-relevant events the SDK
+  already observes — `auth_failure` (a sent credential rejected with 401),
+  `redirect_rejected` (a blocked upstream redirect), `token_refresh_failed`
+  (re-login rejected), and `auth_strategy_replaced` (a live credential swap via
+  `setAuthStrategy`). Before this, every such event reached the embedder only as
+  free-text `console.warn` or an exception to classify; there was no routable
+  structured signal. The channel is **reporting, not enforcement**: the SDK sets
+  no policy and takes no action — the embedder routes events to its own telemetry
+  sink. Delivery is best-effort and fire-and-forget; a handler that throws is
+  caught and logged, never propagated into request flow. Every event field is
+  credential-safe by construction. New public types exported from the root and
+  `/http`: `SecurityEvent`, `SecurityEventHandler`, `SecurityEventType`,
+  `AuthType`, and the four event interfaces. (Detectability finding `d2b84bc4`;
+  also resolves the observability residue of `848a10e1` and the CD-1 observability
+  leg of `251a2d7c`.)
+- **`RedirectError` (exported, with `isRedirectError` guard).** A dedicated,
+  **non-retryable** error for an upstream 3xx the SDK refuses to follow.
+
+### Changed
+
+- **Redirects now surface as `RedirectError`, not a retryable `NetworkError`.**
+  All three `fetch()` call sites moved from `redirect: 'error'` to
+  `redirect: 'manual'`; a 3xx from the configured origin is returned as an
+  `opaqueredirect` and detected deterministically via `response.type` (with a 3xx
+  status-range fallback for non-conforming HTTP stacks), then rejected with
+  `RedirectError` and reported via `redirect_rejected`. Previously undici's
+  redirect `TypeError` fell through `handleFetchError`'s `TypeError` branch into a
+  retryable `NetworkError` — so a redirect (a potential MITM/misroute signal) was
+  both auto-retried (pointless; hammered the redirect target) and buried among
+  ordinary connection failures. The security property from 0.11.1 is preserved:
+  the redirect is rejected before the request body (which can carry credentials on
+  login) is replayed. Detection no longer depends on matching an undici-internal
+  error string. **Migration:** code that caught redirects as `NetworkError` should
+  now catch `RedirectError` (or `isRedirectError(e)`); redirects are no longer
+  retried. (Finding `bdee74f9`.)
+- **`setAuthStrategy` emits an `auth_strategy_replaced` security event.** The
+  method remains an intentional, ungated trusted-caller capability (the login flow
+  swaps in a session token) — its trust boundary is the process — but because the
+  swap changes which credential every subsequent request carries, it is now
+  observable. (Confused-deputy finding `251a2d7c`: addressed via observability +
+  documentation, not gating, since gating would break the intended login flow.)
+
+### Security
+
+- **Sanitize the server-controlled `requestId`.** `SdkApiError` now strips control
+  characters from the `x-request-id` value at construction, closing a CRLF/ANSI
+  log-injection path via `.requestId` access and `toJSON()` — the server-controlled
+  sibling of `message` and `details`, which were already sanitized. (Previously
+  committed on this branch, unreleased.)
+- **Route credential-load anomaly warnings through the structured logger.**
+  `loadStoredCredentials` anomaly warnings (world-readable file mode, malformed
+  `expiresAt`, invalid field formats) now go through `createLogger` rather than raw
+  `console.warn`, giving consumers a single interception surface; and a token
+  **refresh failure** is promoted from `debug` to `warn` so it is visible in
+  production (a refresh failure means a previously-working credential was rejected
+  at re-auth). (Previously committed on this branch, unreleased.)
+
+### Documentation
+
+- **SCOPE.md reconciled with reality.** Corrected the supply-chain posture: the
+  `provenance: true` flag is configured but **not active** (local publishing
+  produces no attestation; there is no CI), and `dist/` is not version-controlled —
+  both gated on standing up an OIDC publish workflow (findings `af25ed88`,
+  `aa945dd5`). Documented the `--omit=dev` audit gap (finding `8050bf35`, accepted
+  with rationale), the new security-event channel and its reporting-only nature
+  (perimeter bullet 8), and the trusted-caller model of `setAuthStrategy` (bullet
+  9). Updated the redirect bullet (6) for `manual` + `RedirectError`.
+
 ## [0.13.0] — 2026-06-16
 
 Ships as MINOR per the pre-1.0 versioning policy: bug fixes plus two contained

@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.11.1**
+**Current version: 0.14.0**
 
 ## Quick Start
 
@@ -97,9 +97,9 @@ try {
 
 This package extracts the shared infrastructure that was duplicated across `@uluops/ops-sdk` and `@uluops/registry-sdk`. It provides:
 
-- **HTTP Client**: Native `fetch`-based client with timeout, retry, auth, rate limiting, and `{ data: T }` envelope parsing
+- **HTTP Client**: Native `fetch`-based client with timeout, retry, auth, rate limiting, `{ data: T }` envelope parsing, and a structured [security-event channel](#security-events)
 - **Authentication**: API key and JWT session strategies with automatic token refresh
-- **Error Hierarchy**: 10 typed error classes mapped to HTTP status codes, plus type guard functions
+- **Error Hierarchy**: 11 typed error classes mapped to HTTP status codes, plus type guard functions
 - **Configuration**: Credential chain loader (constructor > env vars > .env files > stored credentials)
 - **Utilities**: Logger with sensitive data redaction (object-level and string-level), retry with exponential backoff, rate limit header parsing
 
@@ -160,6 +160,9 @@ const client = new HttpClient({
   onRetry: ({ attempt, maxAttempts, error, delayMs }) => {
     console.warn(`Retry ${attempt}/${maxAttempts} in ${delayMs}ms`);
   },
+  onSecurityEvent: (event) => {             // Structured security telemetry
+    myTelemetry.record(event);              // See "Security Events" below
+  },
 });
 ```
 
@@ -191,12 +194,15 @@ const result = await client.request<MyType>('POST', '/idempotent-endpoint', {
   retryMutations: true,
 });
 
-// Zod schema validation on response
+// Runtime validation: the generic T is asserted at the JSON boundary, NOT
+// validated at runtime (same convention as axios/ky/got). For runtime
+// guarantees, parse the result yourself with a Zod schema. The SDK deliberately
+// does NOT accept a caller-supplied schema — an earlier `options.schema` was
+// removed in 0.11.0 because any object with a `.parse` method was accepted,
+// creating a code-execution primitive from untrusted input. See CHANGELOG 0.11.0.
 import { z } from 'zod';
 const schema = z.object({ id: z.string(), name: z.string() });
-const validated = await client.request<z.infer<typeof schema>>('GET', '/endpoint', {
-  schema,
-});
+const validated = schema.parse(await client.get<unknown>('/endpoint'));
 
 // ⚠️ Raw response — bypasses retry, token refresh, and rate limit tracking
 const raw = await client.requestRaw<MyRawType>('GET', '/endpoint');
@@ -228,7 +234,51 @@ The client automatically retries on transient errors (502, 503, 504, 429) and ne
 - **Backoff**: Exponential with jitter (base: 1s, max: 30s)
 - **`retries: 0`**: Makes exactly one attempt (no retries) and surfaces the real typed error (e.g. `NetworkError`) — it does **not** skip the request
 - **401 handling**: Automatic token refresh with deduplication (one refresh at a time). A 401 with no configured credentials throws a `UnauthorizedError` explaining how to set them; a 401 with credentials present preserves the server's reason and appends guidance that the credential may be expired, revoked, or invalid
+- **Redirects are NOT retried**: an upstream 3xx from the configured origin throws a non-retryable `RedirectError` (see [Security Events](#security-events)) — it is rejected before the request body is replayed, not treated as a transient fault
 - **Visibility**: Use `onRetry` callback to observe retry attempts in real time
+
+---
+
+### Security Events
+
+Beyond the operational `onRetry` / `onRateLimitApproaching` callbacks, the client exposes a single **structured security-event channel**. It delivers the security-relevant events the client already observes as a discriminated union, so you can route them to your telemetry sink instead of scraping free-text logs or classifying thrown errors.
+
+```typescript
+import { HttpClient, type SecurityEvent } from '@uluops/sdk-core';
+
+const client = new HttpClient({
+  baseUrl: 'https://api.example.com/v1',
+  sdkName: 'my-app',
+  sdkVersion: '1.0.0',
+  loggerPrefix: '[my-app]',
+  apiKey: 'ulr_your-api-key-here',
+  onSecurityEvent: (event: SecurityEvent) => {
+    switch (event.type) {
+      case 'auth_failure':           // a sent credential was rejected (401)
+        siem.alert('auth_rejected', { authType: event.authType, requestId: event.requestId });
+        break;
+      case 'redirect_rejected':      // upstream 3xx blocked before the body was replayed
+        siem.alert('redirect_blocked', { origin: event.baseUrl });
+        break;
+      case 'token_refresh_failed':   // session re-login was rejected
+        siem.alert('session_refresh_failed', {});
+        break;
+      case 'auth_strategy_replaced': // live credential swap via setAuthStrategy
+        siem.alert('credential_swapped', { from: event.previousType, to: event.newType });
+        break;
+    }
+  },
+});
+```
+
+| Event `type` | Fires when | Payload fields (beyond `type`, `timestamp`, `message`) |
+|--------------|-----------|--------------------------------------------------------|
+| `auth_failure` | A sent credential is rejected with 401 | `authType`, `statusCode`, `requestId?` |
+| `redirect_rejected` | The configured origin returns a 3xx the SDK refuses to follow | `baseUrl` |
+| `token_refresh_failed` | A session token refresh (re-login) is rejected | `authType` (`'session'`) |
+| `auth_strategy_replaced` | The live credential is swapped via `setAuthStrategy` | `previousType`, `newType` |
+
+The channel is **reporting, not enforcement** — the SDK sets no policy and takes no action; you decide what constitutes an incident. Delivery is best-effort and fire-and-forget: a handler that throws is caught and logged, never propagated into request flow. Every event field is credential-safe by construction, so events may be logged verbatim. All event types (`SecurityEvent`, `SecurityEventHandler`, the four event interfaces, `AuthType`) are exported from the root and `/http`.
 
 ---
 
@@ -303,6 +353,7 @@ All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`,
 | `RateLimitError` | 429 | Too many requests (`retryAfter` property) |
 | `ServiceUnavailableError` | 503 | Server temporarily down (`retryAfter` property) |
 | `NetworkError` | 0 | DNS failure, connection refused (auto-retried) |
+| `RedirectError` | 0 | Configured origin returned a 3xx the SDK refuses to follow (**not** retried) |
 | `TimeoutError` | 0 | Request exceeded timeout |
 
 #### Error Factory
@@ -310,8 +361,8 @@ All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`,
 ```typescript
 import { createErrorFromStatus } from '@uluops/sdk-core/errors';
 
-// Create the appropriate error subclass from an HTTP status code
-const error = createErrorFromStatus(404, 'NOT_FOUND', 'Project not found', { id: '123' });
+// Signature: createErrorFromStatus(statusCode, message, code?, details?, requestId?)
+const error = createErrorFromStatus(404, 'Project not found', 'NOT_FOUND', { id: '123' });
 error instanceof NotFoundError; // true
 error.isRetryable();            // false
 ```
@@ -326,6 +377,8 @@ import {
   isConflictError,
   isUnprocessableError,
   isRateLimitError,
+  isNetworkError,
+  isRedirectError,
 } from '@uluops/sdk-core/errors';
 
 if (isSdkApiError(error)) {
@@ -572,7 +625,7 @@ verifyPromptHash(renderedPrompt, expectedPromptHash); // boolean
 | Export Path | Contents |
 |------------|----------|
 | `@uluops/sdk-core` | Everything (HttpClient, errors, config, utils) |
-| `@uluops/sdk-core/http` | `HttpClient`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy` |
+| `@uluops/sdk-core/http` | `HttpClient`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy`, `SecurityEvent` types |
 | `@uluops/sdk-core/errors` | `SdkApiError` + all error subclasses, `createErrorFromStatus`, type guards |
 | `@uluops/sdk-core/config` | `loadCredentials`, `loadConfig`, constants, `EnvVarConfig` |
 | `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sanitizeString`, `sleep`, `retry`, `toQuery`, `computeHash`, `computePromptHash`, `verifyHash`, `verifyPromptHash` |
