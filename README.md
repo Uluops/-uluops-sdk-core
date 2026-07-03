@@ -55,6 +55,10 @@ const client = new HttpClient({
   apiKey: 'ulr_your-api-key-here',
   timeout: 30000,
   retries: 3,
+  // Optional: route security-relevant events (rejected credentials, blocked
+  // redirects, failed token refresh, credential swaps) to your telemetry sink.
+  // See "Security Events" below.
+  onSecurityEvent: (event) => myTelemetry.record(event),
 });
 
 const result = await client.get<MyType>('/endpoint');
@@ -699,6 +703,32 @@ export { sleep, retry, truncate, isPlainObject, isUuid } from '@uluops/sdk-core/
 // Add SDK-specific helpers
 export function myCustomHelper() { /* ... */ }
 ```
+
+### 5. Auth strategy access (for login flows)
+
+`HttpClient` exposes its auth strategy so an SDK subclass can implement a `login()`
+method that swaps the credential in place after authenticating:
+
+```typescript
+import { JwtSessionAuth } from '@uluops/sdk-core/http';
+
+class MyHttpClient extends HttpClient {
+  async login(email: string, password: string): Promise<void> {
+    const auth = new JwtSessionAuth(this.createFetchClient(), { email, password });
+    await auth.refresh();          // performs the login POST against authBaseUrl
+    this.setAuthStrategy(auth);    // subsequent requests use the session token
+  }
+}
+
+client.getAuthStrategy();  // AuthStrategy | null — current credential strategy
+client.getAuthBaseUrl();   // string — the auth endpoint origin (for temp clients)
+```
+
+`setAuthStrategy` performs no authorization check of its own — replacing the
+credential is an intentional trusted-caller capability (the caller already holds
+the client reference). Because the swap changes which credential every subsequent
+request carries, it emits an [`auth_strategy_replaced`](#security-events) security
+event so embedders can observe and correlate credential changes.
 
 ## License
 
