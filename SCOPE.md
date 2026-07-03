@@ -60,7 +60,7 @@ Downstream SDKs should never duplicate core infrastructure. If a pattern is need
 
 ## Supply Chain Posture
 
-sdk-core sits upstream of five consumer packages via npm caret ranges, so a poisoned publish auto-propagates on next `npm install`. The posture below is the minimum baseline; full CI-only publishing is deferred until a break-glass design exists (see security audit run #16).
+sdk-core sits upstream of four direct consumer packages (`@uluops/ops-sdk`, `@uluops/registry-sdk`, `@uluops/core`, `@uluops/registry-mcp`), so a poisoned publish auto-propagates on next `npm install` for any consumer using a caret range. The posture below is the minimum baseline; full CI-only publishing is deferred until a break-glass design exists (see security audit run #16).
 
 ### Producer-side (this package)
 
@@ -74,7 +74,7 @@ sdk-core sits upstream of five consumer packages via npm caret ranges, so a pois
 
 ### Consumer-side (downstream packages)
 
-Consumers — including the five UluOps SDKs that depend on sdk-core — SHOULD:
+Consumers — the four UluOps packages that depend on sdk-core (two SDKs, `@uluops/core`, and `@uluops/registry-mcp`) — SHOULD:
 
 - **Pin sdk-core with `--save-exact`** (e.g., `"@uluops/sdk-core": "0.11.0"`, not `"^0.11.0"`). A poisoned 0.11.1 cannot auto-propagate to a consumer that pins exact.
 - **Run `npm audit signatures`** in CI on install to verify the provenance attestation.
