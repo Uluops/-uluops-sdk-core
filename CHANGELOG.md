@@ -2,6 +2,44 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.15.0] — unreleased
+
+Ships as MINOR: purely additive streaming surface. Driven by the ops-api dataset
+export spec (`ops-dataset-export-spec-v0_3_1`, §7): the dashboard BFF and future
+CLI/MCP consumers need a resilient way to obtain an unconsumed `Response` for
+body passthrough, without reimplementing auth, redirect rejection, error mapping,
+and security-event emission per consumer — the exact duplication sdk-core exists
+to prevent.
+
+### Added
+
+- **`requestStream(method, endpoint, options?)` / `getStream(endpoint, params?,
+  options?)`.** Run the full resilience loop **through headers** — transient-error
+  retry with backoff/Retry-After, deduplicated 401 token refresh, redirect
+  rejection before any body or header consumption, rate-limit tracking, and
+  security-event emission — then return the redirect-checked, 2xx-guaranteed
+  `Response` with `.body` unread. Non-2xx responses buffer the JSON error body
+  and throw the same typed `SdkApiError` hierarchy as `request()`. Contract after
+  handoff: **no retry ever** (a stream that dies after 2xx headers is the
+  consumer's integrity problem), the internal timeout is released (it covers
+  time-to-headers only), and body cancellation belongs to the caller via
+  `options.signal` — an `AbortSignal` composed into the fetch for its full
+  lifecycle, aimed at BFF idle-watchdog use.
+- **`RequestStreamOptions`** exported from the root and `/http` barrels.
+
+### Changed
+
+- **No behavior change for `request()`.** The internal attempt loop was
+  generalized over "produce a `Response`" (`runWithResilience`) and the pre-body
+  half of `doFetch` extracted (`doFetchCore`) so buffered and streaming paths
+  share one resilience implementation. Retry counts, backoff and Retry-After
+  preference, refresh dedup and its `refreshAttempted` `auth_failure` gate,
+  security-event emission points, redirect rejection, timeout coverage (still
+  spans the body read for buffered calls), and error mapping are byte-for-byte
+  intact — the entire pre-existing test suite passes unmodified.
+- `requestRaw`/`requestBinary` are untouched and keep their documented
+  no-resilience contract.
+
 ## [0.14.0] — 2026-07-02
 
 Ships as MINOR per the pre-1.0 versioning policy: additive API (`onSecurityEvent`,

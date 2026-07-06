@@ -1,4 +1,4 @@
-export { HttpClient, type HttpClientConfig } from './http-client.js';
+export { HttpClient, type HttpClientConfig, type RequestStreamOptions } from './http-client.js';
 export {
   ApiKeyAuth,
   JwtSessionAuth,

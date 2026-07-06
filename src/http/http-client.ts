@@ -91,6 +91,29 @@ export interface HttpClientConfig {
 }
 
 /**
+ * Options for {@link HttpClient.requestStream}.
+ */
+export interface RequestStreamOptions {
+  /** Query parameters as key-value pairs */
+  params?: object;
+  /** Extra request headers (merged over defaults) */
+  headers?: Record<string, string>;
+  /** Bypass the Authorization header for this request */
+  skipAuth?: boolean;
+  /** Max retry attempts (overrides client default; retries only ever happen before headers) */
+  retries?: number;
+  /** Allow transient retry for non-GET methods (idempotent endpoints only) */
+  retryMutations?: boolean;
+  /**
+   * Cancels the request at any point in its lifecycle — including body reads
+   * that happen long after the transport's own timeout has been released at
+   * handoff. This is the only way to bound a streaming body: thread a signal
+   * and abort it (e.g. from an idle watchdog) if the stream stalls.
+   */
+  signal?: AbortSignal;
+}
+
+/**
  * Keys stripped from error details to prevent leaking server internals.
  * Defense-in-depth: the API error handlers already sanitize responses,
  * but this catches leakage through ApiError.details if a developer
@@ -298,18 +321,42 @@ export class HttpClient {
       rawEnvelope?: boolean;
     }
   ): Promise<T> {
-    // `retries` is the retry budget; floor the attempt count at 1 so that
-    // `retries: 0` still makes one attempt (and surfaces the real error, e.g.
-    // NetworkError) rather than skipping the loop entirely and throwing a bare
-    // `Error('Request failed')` with no context.
     const maxAttempts = Math.max(1, options?.retries ?? this.retries);
     const canRetry = method === 'GET' || (options?.retryMutations === true);
+    return this.runWithResilience(method, endpoint, canRetry, maxAttempts, (refreshAttempted) =>
+      this.doFetch<T>(method, endpoint, data, options, refreshAttempted)
+    );
+  }
+
+  /**
+   * The shared attempt loop: transient-error retry with backoff/Retry-After,
+   * deduplicated 401 token refresh, and retry callbacks — generalized over
+   * "produce a result" so the buffered path (`request` -> parsed JSON) and the
+   * streaming path (`requestStream` -> unconsumed `Response`) share one
+   * resilience implementation instead of the streaming path joining
+   * `requestRaw`/`requestBinary` in the no-resilience tier.
+   *
+   * Every retry this loop can issue happens while `attemptOnce` is still
+   * pending — i.e., strictly before a `Response` body is handed to any caller.
+   * Once an attempt resolves, the loop returns and never retries again.
+   */
+  private async runWithResilience<R>(
+    method: string,
+    endpoint: string,
+    canRetry: boolean,
+    maxAttempts: number,
+    attemptOnce: (refreshAttempted: boolean) => Promise<R>
+  ): Promise<R> {
+    // `retries` is the retry budget; the caller floors the attempt count at 1 so
+    // that `retries: 0` still makes one attempt (and surfaces the real error,
+    // e.g. NetworkError) rather than skipping the loop entirely and throwing a
+    // bare `Error('Request failed')` with no context.
     let lastError: Error | null = null;
     let refreshAttempted = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const result = await this.doFetch<T>(method, endpoint, data, options, refreshAttempted);
+        const result = await attemptOnce(refreshAttempted);
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error), { cause: error });
@@ -477,15 +524,35 @@ export class HttpClient {
   }
 
   /**
-   * Execute a fetch request
+   * The pre-body core of a resilient request: URL build, header merge + auth,
+   * fetch with `redirect: 'manual'`, redirect rejection, rate-limit tracking,
+   * and the full non-2xx error path (including the 401 guidance and the
+   * refresh-gated `auth_failure` emission). Returns the 2xx `Response` with its
+   * body UNREAD, plus a release handle for the timeout.
+   *
+   * Timeout ownership: the core creates the controller/timer; the caller
+   * decides how long the timeout covers by choosing when to call `release`.
+   * The buffered wrapper (`doFetch`) releases after body read, preserving the
+   * historical body-covering timeout exactly; the streaming path
+   * (`requestStream`) releases at handoff, so the timeout covers
+   * time-to-headers only. `release` is idempotent (double-clear safe) and is
+   * always invoked internally on the error path, since no handle escapes when
+   * this method throws.
+   *
+   * A caller-supplied `AbortSignal` (streaming cancellation) is composed with
+   * the internal timer via `AbortSignal.any` — it participates in the fetch for
+   * its full lifetime, including body reads that happen long after the timer is
+   * released. A pre-headers abort that came from the caller's signal (not the
+   * timer) propagates as the abort error itself rather than being mislabeled
+   * a TimeoutError.
    */
-  private async doFetch<T>(
+  private async doFetchCore(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean },
+    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; signal?: AbortSignal },
     refreshAttempted = false
-  ): Promise<T> {
+  ): Promise<{ response: Response; releaseTimeout: () => void }> {
     const url = this.buildRequestUrl(endpoint, method, data, options?.params);
 
     const headers: Record<string, string> = {
@@ -498,14 +565,27 @@ export class HttpClient {
 
     const body = method !== 'GET' ? JSON.stringify(data) : undefined;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeout);
+    let released = false;
+    const releaseTimeout = (): void => {
+      if (released) return;
+      released = true;
+      clearTimeout(timeoutId);
+    };
+    const signal = options?.signal
+      ? AbortSignal.any([controller.signal, options.signal])
+      : controller.signal;
 
     try {
       const response = await fetch(url.toString(), {
         method,
         headers,
         body,
-        signal: controller.signal,
+        signal,
         redirect: 'manual',
       });
 
@@ -568,6 +648,48 @@ export class HttpClient {
         throw this.createHttpError(response.status, errorData, response.headers);
       }
 
+      return { response, releaseTimeout };
+    } catch (error) {
+      releaseTimeout();
+      // A caller-initiated cancellation is not a timeout: propagate the abort
+      // as-is instead of letting handleFetchError map it to TimeoutError. Only
+      // reachable on the streaming path — buffered callers pass no signal.
+      if (
+        !timedOut &&
+        options?.signal?.aborted &&
+        error instanceof DOMException &&
+        error.name === 'AbortError'
+      ) {
+        throw error;
+      }
+      if (error instanceof SdkApiError) {
+        this.logger.debug(`${method} ${endpoint} -> ${error.statusCode ?? 'ERROR'}`);
+      }
+      throw this.handleFetchError(error);
+    }
+  }
+
+  /**
+   * Execute a fetch request and buffer/parse the JSON body.
+   * The timeout covers the body read (released in `finally`, after `text()`),
+   * exactly as before the doFetchCore extraction.
+   */
+  private async doFetch<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    endpoint: string,
+    data?: object,
+    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean },
+    refreshAttempted = false
+  ): Promise<T> {
+    const { response, releaseTimeout } = await this.doFetchCore(
+      method,
+      endpoint,
+      data,
+      options,
+      refreshAttempted
+    );
+
+    try {
       if (response.status === 204) {
         // SAFETY: `as T` — 204 No Content has no body; callers should type as `request<void>(...)`
         return undefined as T;
@@ -596,7 +718,7 @@ export class HttpClient {
       }
       throw this.handleFetchError(error);
     } finally {
-      clearTimeout(timeoutId);
+      releaseTimeout();
     }
   }
 
@@ -744,6 +866,70 @@ export class HttpClient {
     const responseData = await response.arrayBuffer();
     const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
     return { data: responseData, contentType, headers: response.headers };
+  }
+
+  /**
+   * Make a resilient request and return the raw `Response` with its body
+   * UNREAD, for streaming consumers (exports, large downloads).
+   *
+   * Unlike {@link requestRaw}/{@link requestBinary}, this method runs the full
+   * resilience loop **through headers**: transient-error retry with
+   * backoff/Retry-After, deduplicated 401 token refresh, redirect rejection
+   * (`RedirectError` + `redirect_rejected` event before any body or header is
+   * consumed), rate-limit tracking, and security-event emission — everything
+   * {@link request} does up to the moment a 2xx response arrives. Non-2xx
+   * responses buffer the JSON error body and throw the same typed
+   * {@link SdkApiError} hierarchy as `request()`.
+   *
+   * **Contract after handoff — the transport steps back at the first body byte:**
+   * - **No retry after body handoff.** A retry is only ever issued while the
+   *   attempt is still pending; once a 2xx `Response` is returned, the
+   *   transport never retries. A stream that dies after 2xx headers is a
+   *   200-then-die the transport cannot heal — integrity verification (row
+   *   counts, checksums) is the consumer's job.
+   * - **Timeout covers time-to-headers only.** The internal timer is released
+   *   at handoff; a slow or infinite body is NOT bounded by the transport.
+   * - **Body cancellation belongs to the caller** via `options.signal`, which
+   *   participates in the fetch for its full lifecycle. Callers that pipe the
+   *   body onward (e.g. a BFF passthrough) should abort it from an idle
+   *   watchdog.
+   */
+  async requestStream(
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    endpoint: string,
+    options?: RequestStreamOptions
+  ): Promise<Response> {
+    const maxAttempts = Math.max(1, options?.retries ?? this.retries);
+    const canRetry = method === 'GET' || (options?.retryMutations === true);
+    return this.runWithResilience(method, endpoint, canRetry, maxAttempts, async (refreshAttempted) => {
+      const { response, releaseTimeout } = await this.doFetchCore(
+        method,
+        endpoint,
+        // GET query parameters travel in the `data` slot (buildRequestUrl reads
+        // `data` for GET and `params` otherwise); streaming requests carry no body.
+        method === 'GET' ? options?.params : undefined,
+        options,
+        refreshAttempted
+      );
+      // Handoff: from here the body's lifetime is caller-governed.
+      releaseTimeout();
+      return response;
+    });
+  }
+
+  /**
+   * Send a GET request and return the raw `Response` for streaming consumption.
+   * Convenience wrapper over {@link requestStream}.
+   * @param endpoint - API endpoint path (e.g. '/export/projects/p1/issues')
+   * @param params - Query parameters as key-value pairs
+   * @param options - Additional stream options (headers, signal, retries)
+   */
+  async getStream(
+    endpoint: string,
+    params?: object,
+    options?: Omit<RequestStreamOptions, 'params'>
+  ): Promise<Response> {
+    return this.requestStream('GET', endpoint, { ...options, params });
   }
 
   /**
