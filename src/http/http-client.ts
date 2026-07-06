@@ -583,7 +583,7 @@ export class HttpClient {
       clearTimeout(timeoutId);
     };
     const signal = options?.signal
-      ? AbortSignal.any([controller.signal, options.signal])
+      ? HttpClient.composeAbortSignals(controller.signal, options.signal)
       : controller.signal;
 
     // Visible to the catch below: a post-receipt failure (e.g. a throwing
@@ -1084,6 +1084,35 @@ export class HttpClient {
     } catch (err) {
       ignore(err);
     }
+  }
+
+  /**
+   * Compose the internal timeout signal with a caller-supplied signal.
+   *
+   * Primary path is `AbortSignal.any` (weak-ref dependent tracking — settled
+   * composites are reclaimable, the right semantics for signals that outlive
+   * the timer release at streaming handoff). `AbortSignal.any` landed in Node
+   * 20.3.0; the `engines` floor declares that, but engines is advisory unless
+   * the consumer sets engine-strict — and the signal-passing path is exactly
+   * the flagship BFF idle-watchdog path, so it must not be the one path that
+   * crashes on Node 20.0–20.2. The fallback composes manually; its listeners
+   * are only removed when a side aborts, which is acceptable for the legacy
+   * path (per-request signals, bounded lifetime).
+   */
+  private static composeAbortSignals(a: AbortSignal, b: AbortSignal): AbortSignal {
+    if (typeof AbortSignal.any === 'function') {
+      return AbortSignal.any([a, b]);
+    }
+    const composite = new AbortController();
+    if (a.aborted) {
+      composite.abort(a.reason);
+    } else if (b.aborted) {
+      composite.abort(b.reason);
+    } else {
+      a.addEventListener('abort', () => composite.abort(a.reason), { once: true });
+      b.addEventListener('abort', () => composite.abort(b.reason), { once: true });
+    }
+    return composite.signal;
   }
 
   /**

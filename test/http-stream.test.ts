@@ -441,6 +441,74 @@ describe('requestStream() post-handoff contract (live socket)', () => {
     expect((err as Error).name).toBe('AbortError');
   });
 
+  it('caller abort works without AbortSignal.any (Node 20.0–20.2 fallback composition)', async () => {
+    // The engines floor (>=20.3.0) is advisory; the signal-passing path is the
+    // flagship BFF idle-watchdog path and must not crash on older 20.x. Hide
+    // AbortSignal.any and verify the manual composition still cancels mid-body.
+    const anyFn = AbortSignal.any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (AbortSignal as any).any = undefined;
+    try {
+      const controller = new AbortController();
+      await startServer((_req, res) => {
+        res.writeHead(200);
+        res.write('{"n":0}\n');
+        // Keep open; nothing more arrives.
+      });
+
+      const response = await makeClient({ baseUrl }).getStream('/fallback-abort', undefined, {
+        signal: controller.signal,
+      });
+      const reader = response.body!.getReader();
+      await reader.read();
+      setTimeout(() => controller.abort(), 20);
+      await expect(reader.read()).rejects.toThrow();
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (AbortSignal as any).any = anyFn;
+    }
+  });
+
+  it('a chunked stream that dies mid-body surfaces an error (incomplete chunked framing is LOUD)', async () => {
+    // No Content-Length → Node auto-chunks. Destroying the socket before the
+    // terminal zero-chunk leaves the framing incomplete, and undici rejects
+    // the read. This is the loud truncation variant.
+    await startServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/x-ndjson' }); // chunked
+      res.write('{"n":0}\n');
+      setTimeout(() => res.destroy(), 30);
+    });
+
+    const response = await makeClient({ baseUrl }).getStream('/chunked-die');
+    await expect(response.text()).rejects.toThrow();
+    expect(requestCount).toBe(1); // and still no retry after handoff
+  });
+
+  it('a chunked stream ended cleanly-but-early reads as SUCCESS — silent truncation is real and is the consumer\'s integrity check to catch', async () => {
+    // The server "completes" the response after fewer rows than intended
+    // (crash-then-graceful-shutdown, buggy upstream loop, proxy cut with clean
+    // FIN). The chunked framing is VALID — terminal zero-chunk sent — so no
+    // transport layer can flag it. This test pins the reality that motivates
+    // the export design's in-band verification (X-Export-Total-Rows counted by
+    // the consumer, spec D6/D14): the ONLY defense against this variant lives
+    // in the consumer, not the transport.
+    await startServer((_req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson',
+        'X-Export-Total-Rows': '3', // promised three...
+      });
+      res.write('{"n":0}\n');
+      res.end(); // ...delivered one, cleanly.
+    });
+
+    const response = await makeClient({ baseUrl }).getStream('/chunked-early-end');
+    const text = await response.text(); // resolves — NO error
+    const rows = text.split('\n').filter(Boolean).length;
+    expect(rows).toBe(1);
+    expect(Number(response.headers.get('x-export-total-rows'))).toBe(3);
+    // rows !== total: detectable ONLY by the consumer comparing in-band count.
+  });
+
   it('never retries after body handoff: a mid-body death is the consumer\'s to detect', async () => {
     await startServer((_req, res) => {
       res.writeHead(200, {

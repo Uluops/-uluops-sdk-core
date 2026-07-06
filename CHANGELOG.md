@@ -35,8 +35,11 @@ to prevent.
   share one resilience implementation. Retry counts, backoff and Retry-After
   preference, refresh dedup and its `refreshAttempted` `auth_failure` gate,
   security-event emission points, redirect rejection, timeout coverage (still
-  spans the body read for buffered calls), and error mapping are byte-for-byte
-  intact — the entire pre-existing test suite passes unmodified.
+  spans the body read for buffered calls), and error mapping show no observable
+  behavior change — the entire pre-existing regression suite passes unmodified,
+  and the one new code path reachable from buffered calls (drain-on-error body
+  cancel) is a no-op there because every buffered error path has already
+  consumed the body.
 - `requestRaw`/`requestBinary` are untouched and keep their documented
   no-resilience contract.
 - **Node engines floor raised `>=20.0.0` → `>=20.3.0`.** `requestStream`
