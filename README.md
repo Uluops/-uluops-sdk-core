@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.14.0**
+**Current version: 0.15.0**
 
 ## Quick Start
 
@@ -109,7 +109,7 @@ This package extracts the shared infrastructure that was duplicated across `@ulu
 
 ## Prerequisites
 
-- Node.js 20.0.0 or higher (uses native `fetch`)
+- Node.js 20.3.0 or higher (uses native `fetch`; streaming uses `AbortSignal.any`, added in 20.3.0)
 - TypeScript 5.0+ (for TypeScript users)
 - ESM project (`"type": "module"` in package.json) — this package is ESM-only
 
@@ -215,6 +215,38 @@ console.log(raw); // parsed JSON without envelope unwrapping
 // ⚠️ Binary response — same bypass as requestRaw
 const binary = await client.requestBinary('GET', '/files/report.pdf');
 console.log(binary.data, binary.contentType);
+```
+
+#### Streaming Responses (0.15.0+)
+
+Unlike `requestRaw`/`requestBinary`, `requestStream`/`getStream` keep **full
+resilience through headers** — transient-error retry with backoff/Retry-After,
+deduplicated 401 token refresh, redirect rejection, rate-limit tracking, and
+security-event emission — then hand off the redirect-checked, 2xx-guaranteed
+`Response` with its body **unread**. Non-2xx responses buffer the JSON error
+body and throw the same typed `SdkApiError` hierarchy as `request()`.
+
+After handoff the transport steps back:
+
+- **No retry ever.** A stream that dies after 2xx headers is a 200-then-die the
+  transport cannot heal — integrity verification (row counts, checksums) is the
+  consumer's job.
+- **Timeout covers time-to-headers only.** The internal timer is released at
+  handoff; a slow or infinite body is not bounded by the transport.
+- **Body cancellation belongs to the caller** via `options.signal`, which
+  participates in the fetch for its full lifecycle — thread an `AbortSignal`
+  and abort it from an idle watchdog if the stream stalls.
+
+```typescript
+// Stream a dataset export (NDJSON) through a BFF passthrough
+const watchdog = new AbortController();
+const res = await client.getStream(
+  '/export/projects/p1/issues',
+  { format: 'ndjson' },
+  { signal: watchdog.signal }
+);
+console.log(res.headers.get('x-export-total-rows')); // headers readable at handoff
+return new Response(res.body, { headers: filtered(res.headers) }); // caller owns the body
 ```
 
 #### Rate Limit Info
@@ -629,7 +661,7 @@ verifyPromptHash(renderedPrompt, expectedPromptHash); // boolean
 | Export Path | Contents |
 |------------|----------|
 | `@uluops/sdk-core` | Everything (HttpClient, errors, config, utils) |
-| `@uluops/sdk-core/http` | `HttpClient`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy`, `SecurityEvent` types |
+| `@uluops/sdk-core/http` | `HttpClient` (incl. `requestStream`/`getStream`), `RequestStreamOptions`, `ApiKeyAuth`, `JwtSessionAuth`, `createAuthStrategy`, `SecurityEvent` types |
 | `@uluops/sdk-core/errors` | `SdkApiError` + all error subclasses, `createErrorFromStatus`, type guards |
 | `@uluops/sdk-core/config` | `loadCredentials`, `loadConfig`, constants, `EnvVarConfig` |
 | `@uluops/sdk-core/utils` | `createLogger`, `redactSensitive`, `sanitizeString`, `sleep`, `retry`, `toQuery`, `computeHash`, `computePromptHash`, `verifyHash`, `verifyPromptHash` |

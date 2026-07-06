@@ -39,6 +39,11 @@ to prevent.
   intact — the entire pre-existing test suite passes unmodified.
 - `requestRaw`/`requestBinary` are untouched and keep their documented
   no-resilience contract.
+- **Node engines floor raised `>=20.0.0` → `>=20.3.0`.** `requestStream`
+  composes the caller's `AbortSignal` with the internal timeout via
+  `AbortSignal.any`, available from Node 20.3.0. Buffered paths
+  (`request`/`requestRaw`/`requestBinary`) never hit it, but the declared floor
+  now matches the real runtime requirement of the full surface.
 
 ## [0.14.0] — 2026-07-02
 

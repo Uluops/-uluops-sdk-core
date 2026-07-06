@@ -239,6 +239,59 @@ describe('requestStream() resilience before headers', () => {
     expect(events.filter((e) => e.type === 'auth_failure')).toHaveLength(1);
   });
 
+  it('refreshes AT MOST ONCE per request: a 401 after a successful refresh never triggers a second login', async () => {
+    // Falsifier for the loop-level `!refreshAttempted` guard in
+    // runWithResilience: if the guard is removed, the second 401 kicks off a
+    // SECOND login (consuming extraLogin below) and a third request attempt.
+    // With the guard intact, the second 401 is terminal.
+    nock(TEST_BASE_URL)
+      .get(apiPath('/seq-401'))
+      .reply(401, { error: { message: 'expired' } });
+    nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'))
+      .reply(200, { data: { sessionToken: 'fresh-tok', expiresAt: '2099-01-01' } });
+    nock(TEST_BASE_URL)
+      .get(apiPath('/seq-401'))
+      .matchHeader('Authorization', 'Bearer fresh-tok')
+      .reply(401, { error: { message: 'revoked' } });
+    // Bait for the mutant: a second login interceptor that a correct client
+    // must never consume.
+    const extraLogin = nock(TEST_BASE_URL)
+      .post(apiPath('/auth/login'))
+      .reply(200, { data: { sessionToken: 'should-never-be-fetched', expiresAt: '2099-01-01' } });
+
+    const client = makeClient({
+      apiKey: undefined,
+      sessionToken: TEST_JWT_STALE,
+      email: 'a@b.com',
+      password: 'pw',
+      retries: 4,
+    });
+
+    const err = await client.getStream('/seq-401').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnauthorizedError);
+    expect(extraLogin.isDone()).toBe(false);
+  });
+
+  it('retryMutations allows a POST stream to retry a transient 503 before headers', async () => {
+    nock(TEST_BASE_URL).post(apiPath('/flaky-post')).reply(503, { error: { message: 'down' } });
+    nock(TEST_BASE_URL).post(apiPath('/flaky-post')).reply(201, NDJSON_BODY);
+
+    const response = await makeClient({ retries: 2 }).requestStream('POST', '/flaky-post', {
+      retryMutations: true,
+    });
+    expect(response.status).toBe(201);
+    expect(await response.text()).toBe(NDJSON_BODY);
+  });
+
+  it('handles a 2xx stream with an empty body', async () => {
+    nock(TEST_BASE_URL).get(apiPath('/empty-stream')).reply(200, '');
+
+    const response = await makeClient().getStream('/empty-stream');
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('');
+  });
+
   it('rejects a raw-3xx redirect with RedirectError + redirect_rejected before any body handoff', async () => {
     const events: SecurityEvent[] = [];
     nock(TEST_BASE_URL)
@@ -285,8 +338,12 @@ describe('requestStream() post-handoff contract (live socket)', () => {
   let baseUrl: string;
   let requestCount: number;
 
-  afterEach(() => {
-    server?.close();
+  afterEach(async () => {
+    if (!server) return;
+    // hung-body/die-mid-body leave sockets open — force-close them so the
+    // close callback actually fires and no socket leaks across tests.
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   /** Start a server on an ephemeral loopback port; sets `baseUrl` for clients. */
