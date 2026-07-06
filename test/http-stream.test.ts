@@ -241,9 +241,25 @@ describe('requestStream() resilience before headers', () => {
 
   it('refreshes AT MOST ONCE per request: a 401 after a successful refresh never triggers a second login', async () => {
     // Falsifier for the loop-level `!refreshAttempted` guard in
-    // runWithResilience: if the guard is removed, the second 401 kicks off a
-    // SECOND login (consuming extraLogin below) and a third request attempt.
-    // With the guard intact, the second 401 is terminal.
+    // runWithResilience. This must use a NON-clearing session strategy: with
+    // the default clearCredentialsAfterLogin=true, the CWE-316 credential
+    // clearing independently blocks a second refresh (canRefresh() flips
+    // false after login), masking a removed loop guard. Only the long-lived
+    // non-clearing session exercises the guard itself — remove it and the
+    // second 401 kicks off a SECOND login (consuming extraLogin below) plus a
+    // third request attempt.
+    const { JwtSessionAuth } = await import('../src/http/auth-strategy.js');
+    const client = makeClient({ apiKey: undefined, retries: 4 });
+    client.setAuthStrategy(
+      new JwtSessionAuth(
+        client.createFetchClient(),
+        { email: 'a@b.com', password: 'pw' },
+        undefined,
+        TEST_JWT_STALE,
+        false, // clearCredentialsAfterLogin = false — canRefresh() stays true after refresh
+      )
+    );
+
     nock(TEST_BASE_URL)
       .get(apiPath('/seq-401'))
       .reply(401, { error: { message: 'expired' } });
@@ -259,14 +275,6 @@ describe('requestStream() resilience before headers', () => {
     const extraLogin = nock(TEST_BASE_URL)
       .post(apiPath('/auth/login'))
       .reply(200, { data: { sessionToken: 'should-never-be-fetched', expiresAt: '2099-01-01' } });
-
-    const client = makeClient({
-      apiKey: undefined,
-      sessionToken: TEST_JWT_STALE,
-      email: 'a@b.com',
-      password: 'pw',
-      retries: 4,
-    });
 
     const err = await client.getStream('/seq-401').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnauthorizedError);
