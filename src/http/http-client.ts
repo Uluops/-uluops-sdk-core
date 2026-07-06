@@ -109,6 +109,12 @@ export interface RequestStreamOptions {
    * that happen long after the transport's own timeout has been released at
    * handoff. This is the only way to bound a streaming body: thread a signal
    * and abort it (e.g. from an idle watchdog) if the stream stalls.
+   *
+   * Pass a FRESH signal per stream (one AbortController per request). The
+   * signal is composed into the fetch via `AbortSignal.any` for the body's
+   * full lifetime; sharing one long-lived controller across a pool of streams
+   * accumulates dependents on that source signal for as long as their bodies
+   * are unconsumed.
    */
   signal?: AbortSignal;
 }
@@ -580,8 +586,12 @@ export class HttpClient {
       ? AbortSignal.any([controller.signal, options.signal])
       : controller.signal;
 
+    // Visible to the catch below: a post-receipt failure (e.g. a throwing
+    // consumer rate-limit callback) must not strand a delivered 2xx body —
+    // an unread streaming body pins the socket until GC.
+    let response: Response | undefined;
     try {
-      const response = await fetch(url.toString(), {
+      response = await fetch(url.toString(), {
         method,
         headers,
         body,
@@ -648,9 +658,21 @@ export class HttpClient {
         throw this.createHttpError(response.status, errorData, response.headers);
       }
 
+      // CONTRACT: every caller of doFetchCore MUST invoke releaseTimeout on
+      // this success path (doFetch: finally after body read; requestStream: at
+      // handoff) — a forgotten release leaks the timer AND lets it fire
+      // mid-body-read, aborting a handed-off stream.
       return { response, releaseTimeout };
     } catch (error) {
       releaseTimeout();
+      // Drain-on-error: if a response was received but this attempt is failing
+      // (redirect rejection leaves a null/opaque body; a consumer callback
+      // throwing after a 2xx leaves a LIVE body), cancel it so the socket is
+      // returned. No-op when the body was already consumed (error-envelope
+      // paths call response.json()) or never existed.
+      if (response && !response.bodyUsed) {
+        void response.body?.cancel().catch(() => {});
+      }
       // A caller-initiated cancellation is not a timeout: propagate the abort
       // as-is instead of letting handleFetchError map it to TimeoutError. Only
       // reachable on the streaming path — buffered callers pass no signal.
