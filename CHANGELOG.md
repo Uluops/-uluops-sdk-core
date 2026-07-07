@@ -2,14 +2,15 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
-## [0.15.0] — unreleased
+## [0.15.0] — 2026-07-06
 
 Ships as MINOR: purely additive streaming surface. Driven by the ops-api dataset
-export spec (`ops-dataset-export-spec-v0_3_1`, §7): the dashboard BFF and future
-CLI/MCP consumers need a resilient way to obtain an unconsumed `Response` for
-body passthrough, without reimplementing auth, redirect rejection, error mapping,
-and security-event emission per consumer — the exact duplication sdk-core exists
-to prevent.
+export spec (`ops-dataset-export-spec-v0_3_1`, §7): BFF passthrough, CLI, and MCP
+consumers need a resilient way to obtain an unconsumed `Response` for body
+passthrough, without reimplementing auth, redirect rejection, error mapping, and
+security-event emission per consumer — the exact duplication sdk-core exists to
+prevent. (The dashboard export route ships its own raw-fetch passthrough for now;
+this transport is the path CLI/MCP and a future SDK-based BFF will take.)
 
 ### Added
 
