@@ -6,8 +6,8 @@
  *   registry-sdk: SdkApiError as RegistryApiError
  */
 
-import { HTTP_STATUS, ERROR_CODES } from '../config/constants.js';
-import { sanitizeForDisplay, sanitizeString, stripControlChars } from '../utils/logger.js';
+import { HTTP_STATUS, ERROR_CODES, RETRYABLE_STATUS_CODES } from '../config/constants.js';
+import { sanitizeForDisplay, sanitizeString, stripControlChars } from '../utils/sanitize.js';
 
 /**
  * Base API error class for all UluOps SDK errors
@@ -41,12 +41,7 @@ export class SdkApiError extends Error {
    * Check if this error is retryable (transient server errors)
    */
   isRetryable(): boolean {
-    return (
-      this.statusCode === HTTP_STATUS.BAD_GATEWAY ||
-      this.statusCode === HTTP_STATUS.SERVICE_UNAVAILABLE ||
-      this.statusCode === HTTP_STATUS.GATEWAY_TIMEOUT ||
-      this.statusCode === HTTP_STATUS.TOO_MANY_REQUESTS
-    );
+    return (RETRYABLE_STATUS_CODES as Set<number>).has(this.statusCode);
   }
 
   /**

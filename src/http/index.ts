@@ -13,6 +13,7 @@ export type {
   SecurityEventHandler,
   SecurityEventBase,
   AuthType,
+  ConcreteAuthType,
   AuthFailureEvent,
   RedirectRejectedEvent,
   TokenRefreshFailedEvent,

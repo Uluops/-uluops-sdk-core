@@ -13,12 +13,15 @@ export {
 
 export {
   createLogger,
+  type Logger,
+} from './logger.js';
+
+export {
   redactSensitive,
   sanitizeForDisplay,
   sanitizeForLog,
   sanitizeString,
-  type Logger,
-} from './logger.js';
+} from './sanitize.js';
 
 export {
   computeHash,

@@ -45,8 +45,10 @@ export type SecurityEventType =
   | 'token_refresh_failed'
   | 'auth_strategy_replaced';
 
+/** Concrete credential kinds a strategy can hold (excludes the `none` sentinel). */
+export type ConcreteAuthType = 'api_key' | 'session';
 /** Credential kind an event pertains to. `none` = no auth strategy configured. */
-export type AuthType = 'api_key' | 'session' | 'none';
+export type AuthType = ConcreteAuthType | 'none';
 
 /** Fields common to every security event. */
 export interface SecurityEventBase {

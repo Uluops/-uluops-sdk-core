@@ -11,6 +11,7 @@ Shared infrastructure for UluOps SDKs. Every UluOps SDK (`@uluops/ops-sdk`, `@ul
 - **Error hierarchy** (`SdkApiError` and subclasses): typed errors for every HTTP status code the APIs return. Includes retryability classification, sanitized serialization, and type guards.
 - **Configuration** (`loadCredentials`, `loadConfig`): environment variable loading, `.env` file discovery, and `~/.uluops/credentials.json` storage.
 - **Sanitization** (`sanitizeForDisplay`, `sanitizeForLog`, `sanitizeString`): three-layer redaction covering structured objects, log arguments, and free-form strings.
+- **Content-addressing** (`computeHash`, `computePromptHash`, `verifyHash`, `verifyPromptHash`): the single canonical hash implementation shared across UluOps. registry-api computes and stores hash/prompt_hash at publish time; @uluops/core verifies caller-pinned hashes at resolve time. Parity is by construction — both sides import from hash.ts rather than reimplementing. YAML source and rendered prompts use distinct, non-interchangeable rules.
 - **Utilities**: sleep, retry, UUID validation, rate limit header parsing, query parameter conversion.
 
 ### Security Perimeter

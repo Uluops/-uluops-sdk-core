@@ -8,6 +8,7 @@
  */
 
 import type { FetchClient } from './fetch-adapter.js';
+import type { ConcreteAuthType } from './security-events.js';
 import { API_KEY_PREFIX, MIN_API_KEY_LENGTH } from '../config/constants.js';
 import { ValidationError, UnauthorizedError } from '../errors/errors.js';
 
@@ -28,7 +29,7 @@ export interface AuthStrategy {
   /** Whether the strategy currently holds a valid credential */
   isAuthenticated(): boolean;
   /** Discriminator for the credential type */
-  getType(): 'api_key' | 'session';
+  getType(): ConcreteAuthType;
 }
 
 /**

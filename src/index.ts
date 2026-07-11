@@ -14,6 +14,7 @@ export type {
   SecurityEventHandler,
   SecurityEventBase,
   AuthType,
+  ConcreteAuthType,
   AuthFailureEvent,
   RedirectRejectedEvent,
   TokenRefreshFailedEvent,
@@ -75,6 +76,7 @@ export {
   JITTER_MIN,
   JITTER_MAX,
   API_KEY_PREFIX,
+  MIN_API_KEY_LENGTH,
   CONFIG_PATHS,
   HTTP_STATUS,
   ERROR_CODES,
@@ -97,12 +99,15 @@ export {
 
 export {
   createLogger,
+  type Logger,
+} from './utils/logger.js';
+
+export {
   redactSensitive,
   sanitizeForDisplay,
   sanitizeForLog,
   sanitizeString,
-  type Logger,
-} from './utils/logger.js';
+} from './utils/sanitize.js';
 
 export {
   computeHash,

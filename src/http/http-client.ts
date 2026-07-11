@@ -3,6 +3,33 @@
  *
  * Single class with config object pattern. Each SDK creates a subclass
  * that passes SDK-specific defaults (baseUrl, sdkName, loggerPrefix, etc.).
+ *
+ * Architecture note — internal concern seams and decomposition trajectory:
+ * The single HttpClient class deliberately concentrates five concern seams
+ * that are cheap to keep together while the surface is stable:
+ *
+ *   1. Auth orchestration — credential selection, Authorization header
+ *      injection, session-token refresh deduplication (runWithResilience +
+ *      attemptTokenRefresh + AuthStrategy).
+ *   2. Retry-backoff resilience loop — transient-error classification,
+ *      exponential backoff with Retry-After, onRetry callback
+ *      (runWithResilience + shouldRetryTransient + calculateBackoff*).
+ *   3. Redirect + transport validation — redirect rejection at both origins
+ *      (assertNotRedirect), base-URL HTTPS enforcement (validateBaseUrl),
+ *      header injection prevention (validateHeaders).
+ *   4. Request building — URL construction, query-param serialization,
+ *      body serialization, header merging (buildRequestUrl, executeFetch,
+ *      doFetchCore).
+ *   5. Security-event emission — structured, routable telemetry channel for
+ *      auth failures, redirect blocks, token refresh failures, and strategy
+ *      swaps (emitSecurityEvent, onSecurityEvent handler).
+ *
+ * If decomposition becomes warranted (e.g., the retry loop needs an
+ * injectable policy, or auth orchestration needs to be unit-tested without
+ * a live fetch), split along these seams: AuthOrchestrator (1), ResiliencePolicy
+ * (2), TransportValidator (3), RequestBuilder (4), SecurityChannel (5). The
+ * seams are already implicit in the private-method grouping — no structural
+ * change is needed before that split.
  */
 
 import { isIP } from 'node:net';

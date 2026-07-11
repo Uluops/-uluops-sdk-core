@@ -1,7 +1,7 @@
 {
   "name": "@uluops/sdk-core",
   "version": "0.15.0",
-  "description": "Shared infrastructure for UluOps SDKs",
+  "description": "Shared infrastructure for UluOps SDKs, including the canonical content-addressing (hash parity) implementation shared with the registry API and @uluops/core",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
