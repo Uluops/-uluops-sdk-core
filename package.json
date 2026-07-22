@@ -29,6 +29,10 @@
     "./utils": {
       "import": "./dist/utils/index.js",
       "types": "./dist/utils/index.d.ts"
+    },
+    "./decisions": {
+      "import": "./dist/decisions/index.js",
+      "types": "./dist/decisions/index.d.ts"
     }
   },
   "files": [
