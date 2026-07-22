@@ -2,6 +2,29 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.16.0] — 2026-07-22
+
+### Added
+
+- **`@uluops/sdk-core/decisions`** — the canonical decision-classification
+  module (`classifyDecision`, `resolveDecisionCategory`, `buildVocabularyMap`,
+  `DecisionCategory`, `DecisionVocabularyMap`), moved verbatim from
+  `@uluops/core`'s executor (OQ-1b of ops-uluops-api's
+  save-run-decision-semantics spec v0.2.1). The module is pure and
+  dependency-free; it lives here so consumers like the ops API can take the
+  canonical register on a thin edge instead of core's AI-SDK stack.
+  `@uluops/core` ≥0.35.0 re-exports it path-compatibly.
+
+### Changed
+
+- **Core register extended** (core issue `44a7a67c`): `APPROVED`/`PROCEED`
+  classify **positive**, `BLOCKED` classifies **negative** — genuine validator
+  gate verdicts (pre-implementation-architect, gate agents) that previously
+  classified neutral and read as non-gating. The CWE-345 anti-remap guard
+  covers all three. Downstream effect for register consumers: submission-path
+  `allGatesPassed` now reports `true` for APPROVED/PROCEED results and
+  executor gates treat BLOCKED as negative — intended corrections.
+
 ## [0.15.0] — 2026-07-06
 
 Ships as MINOR: purely additive streaming surface. Driven by the ops-api dataset
