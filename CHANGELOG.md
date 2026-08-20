@@ -6,6 +6,13 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 
 ### Added
 
+- **`request(..., { rawEnvelope: true })`** — return the full parsed JSON body without
+  the `{ data: T }` unwrap, on the fully resilient request path (retry/backoff, 401
+  refresh, rate-limit tracking — unlike `requestRaw`, which bypasses all three). For
+  endpoints that put meaningful siblings beside `data`; the first consumer is
+  `@uluops/ops-sdk` ≥5.18.0 reading the update-run `analysisWrite` echo. *(Entry added
+  retroactively 2026-08-20 — the feature shipped in this release undocumented, and its
+  absence here caused a census to conclude no envelope-aware read existed.)*
 - **`@uluops/sdk-core/decisions`** — the canonical decision-classification
   module (`classifyDecision`, `resolveDecisionCategory`, `buildVocabularyMap`,
   `DecisionCategory`, `DecisionVocabularyMap`), moved verbatim from
