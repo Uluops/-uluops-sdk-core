@@ -4,6 +4,8 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-21
+
 ### Changed
 
 - **`ForbiddenError` retains the API's structured `code` and `details`** (RE-PROBE-02 N1).
