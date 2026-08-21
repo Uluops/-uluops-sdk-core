@@ -2,6 +2,21 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **`ForbiddenError` retains the API's structured `code` and `details`** (RE-PROBE-02 N1).
+  `createErrorFromStatus` passed both to every other 4xx class but dropped them on 403, hardcoding
+  `code: 'FORBIDDEN'` and `details: undefined`. A tier-gate denial (`TIER_REQUIRED` with
+  `{required, current, feature, hint?, upgradeUrl?}`) and a role denial (`ROLE_REQUIRED` /
+  `INSUFFICIENT_ROLE`) were therefore indistinguishable from a generic access-denied by the time
+  any consumer saw them — which is why the ops MCP's 403 suggestion argued against the tier limit
+  it was attached to. Constructor signature is backward-compatible (two new trailing optional
+  params); `code` still defaults to `FORBIDDEN` when the API sends none. Semantics note: a
+  consumer branching on `err.code === 'FORBIDDEN'` no longer matches tier/role denials —
+  workspace census 2026-08-21 found zero such branches.
+
 ## [0.16.0] — 2026-07-22
 
 ### Added

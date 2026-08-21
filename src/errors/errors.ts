@@ -81,10 +81,24 @@ export class UnauthorizedError extends SdkApiError {
 
 /**
  * 403 Forbidden - Access denied
+ *
+ * Retains the API's structured error code and details when provided
+ * (RE-PROBE-02 N1): a tier-gate denial carries code `TIER_REQUIRED` with
+ * `details {required, current, feature, hint?, upgradeUrl?}`, and a role gate
+ * carries `ROLE_REQUIRED` / `INSUFFICIENT_ROLE` — discarding them forced
+ * every downstream surface into a generic access-denied remedy that argued
+ * against the specific cause it was attached to. `code` defaults to
+ * FORBIDDEN when the API sends none, so existing `code === 'FORBIDDEN'`
+ * checks keep matching generic denials.
  */
 export class ForbiddenError extends SdkApiError {
-  constructor(message = 'Access denied', requestId?: string) {
-    super(HTTP_STATUS.FORBIDDEN, message, ERROR_CODES.FORBIDDEN, undefined, requestId);
+  constructor(
+    message = 'Access denied',
+    requestId?: string,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(HTTP_STATUS.FORBIDDEN, message, code ?? ERROR_CODES.FORBIDDEN, details, requestId);
     this.name = 'ForbiddenError';
   }
 }
@@ -286,7 +300,7 @@ export function createErrorFromStatus(
     case HTTP_STATUS.UNAUTHORIZED:
       return new UnauthorizedError(safe, requestId);
     case HTTP_STATUS.FORBIDDEN:
-      return new ForbiddenError(safe, requestId);
+      return new ForbiddenError(safe, requestId, code, details);
     case HTTP_STATUS.NOT_FOUND:
       return new NotFoundError(safe, undefined, requestId);
     case HTTP_STATUS.CONFLICT:

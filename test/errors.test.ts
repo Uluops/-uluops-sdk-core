@@ -115,6 +115,29 @@ describe('ForbiddenError', () => {
     const err = new ForbiddenError('nope');
     expect(err.message).toBe('nope');
   });
+
+  it('retains API-supplied code and details (N1)', () => {
+    const err = new ForbiddenError('This feature requires plus tier or higher.', 'req-1', 'TIER_REQUIRED', {
+      required: 'plus',
+      current: 'free',
+      feature: 'registry.effectivenessFull',
+      upgradeUrl: 'https://registry.uluops.ai/orgs/acme/settings/billing?source=api',
+    });
+    expect(err.code).toBe('TIER_REQUIRED');
+    expect(err.details).toEqual({
+      required: 'plus',
+      current: 'free',
+      feature: 'registry.effectivenessFull',
+      upgradeUrl: 'https://registry.uluops.ai/orgs/acme/settings/billing?source=api',
+    });
+    expect(err.requestId).toBe('req-1');
+  });
+
+  it('defaults code to FORBIDDEN when the API sends none', () => {
+    const err = new ForbiddenError('nope', undefined, undefined, undefined);
+    expect(err.code).toBe(ERROR_CODES.FORBIDDEN);
+    expect(err.details).toBeUndefined();
+  });
 });
 
 describe('NotFoundError', () => {
@@ -379,6 +402,14 @@ describe('createErrorFromStatus()', () => {
   it('should create ForbiddenError for 403', () => {
     const err = createErrorFromStatus(403, 'nope');
     expect(err).toBeInstanceOf(ForbiddenError);
+  });
+
+  it('passes code and details through to ForbiddenError (N1)', () => {
+    const err = createErrorFromStatus(403, 'tier', 'TIER_REQUIRED', { required: 'plus', current: 'free' }, 'req-2');
+    expect(err).toBeInstanceOf(ForbiddenError);
+    expect(err.code).toBe('TIER_REQUIRED');
+    expect(err.details).toEqual({ required: 'plus', current: 'free' });
+    expect(err.requestId).toBe('req-2');
   });
 
   it('should create NotFoundError for 404', () => {
