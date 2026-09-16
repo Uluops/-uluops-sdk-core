@@ -4,6 +4,10 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`package.json` `repository`/`homepage`/`bugs` now point at the public repo, `github.com/Uluops/-uluops-sdk-core`** — it pointed at {'type': 'git', 'url': 'https://github.com/uluops/uluops.git', 'directory': 'packages/sdk-core'}, which npm renders as the package's GitHub link (2026-09-16, found while adding npm + GitHub links to every SDK page on docs.uluops.ai).
+
 ## [0.17.0] — 2026-08-21
 
 ### Changed
