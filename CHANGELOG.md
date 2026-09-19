@@ -4,6 +4,10 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 
 ## [Unreleased]
 
+### F20
+
+- Preserve API-specific 404 and 409 codes/details in typed errors, including organization authorization failures and versioned idempotency refusals.
+
 ### Fixed
 
 - **`package.json` `repository`/`homepage`/`bugs` now point at the public repo, `github.com/Uluops/-uluops-sdk-core`** — it pointed at {'type': 'git', 'url': 'https://github.com/uluops/uluops.git', 'directory': 'packages/sdk-core'}, which npm renders as the package's GitHub link (2026-09-16, found while adding npm + GitHub links to every SDK page on docs.uluops.ai).

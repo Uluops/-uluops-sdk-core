@@ -107,7 +107,7 @@ export class ForbiddenError extends SdkApiError {
  * 404 Not Found - Resource not found
  */
 export class NotFoundError extends SdkApiError {
-  constructor(resource: string, identifier?: string, requestId?: string) {
+  constructor(resource: string, identifier?: string, requestId?: string, code?: string, details?: Record<string, unknown>) {
     // If resource already contains "not found" (e.g., from API response), use it as-is
     const message = resource.toLowerCase().includes('not found')
       ? resource
@@ -117,8 +117,8 @@ export class NotFoundError extends SdkApiError {
     super(
       HTTP_STATUS.NOT_FOUND,
       message,
-      ERROR_CODES.NOT_FOUND,
-      identifier ? { resource, identifier } : { resource },
+      code ?? ERROR_CODES.NOT_FOUND,
+      details ?? (identifier ? { resource, identifier } : { resource }),
       requestId
     );
     this.name = 'NotFoundError';
@@ -129,8 +129,8 @@ export class NotFoundError extends SdkApiError {
  * 409 Conflict - Resource already exists or state conflict
  */
 export class ConflictError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
-    super(HTTP_STATUS.CONFLICT, message, ERROR_CODES.CONFLICT, details, requestId);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string, code?: string) {
+    super(HTTP_STATUS.CONFLICT, message, code ?? ERROR_CODES.CONFLICT, details, requestId);
     this.name = 'ConflictError';
   }
 }
@@ -302,9 +302,9 @@ export function createErrorFromStatus(
     case HTTP_STATUS.FORBIDDEN:
       return new ForbiddenError(safe, requestId, code, details);
     case HTTP_STATUS.NOT_FOUND:
-      return new NotFoundError(safe, undefined, requestId);
+      return new NotFoundError(safe, undefined, requestId, code, details);
     case HTTP_STATUS.CONFLICT:
-      return new ConflictError(safe, details, requestId);
+      return new ConflictError(safe, details, requestId, code);
     case HTTP_STATUS.PAYLOAD_TOO_LARGE: {
       const maxSize = typeof details?.maxSize === 'number' ? details.maxSize : undefined;
       return new PayloadTooLargeError(safe, maxSize, requestId);

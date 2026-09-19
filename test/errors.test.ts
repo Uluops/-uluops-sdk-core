@@ -545,3 +545,13 @@ describe('type guards', () => {
     expect(isRateLimitError(new SdkApiError(429, 'z'))).toBe(false);
   });
 });
+
+
+describe('F20 structured 404/409 causes', () => {
+  it.each([[404, 'ORG_NOT_FOUND', NotFoundError], [409, 'IDEMPOTENCY_PAYLOAD_MISMATCH', ConflictError], [409, 'IDEMPOTENCY_CONTRACT_MISMATCH', ConflictError]] as const)
+  ('preserves %s/%s through the HTTP error factory', (status, code, errorClass) => {
+    const error = createErrorFromStatus(status, 'Request refused', code, { applicationState: 'not_applied' }, 'f20-request');
+    expect(error).toBeInstanceOf(errorClass);
+    expect(error).toMatchObject({ statusCode: status, code, details: { applicationState: 'not_applied' }, requestId: 'f20-request' });
+  });
+});
