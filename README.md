@@ -6,12 +6,12 @@
 
 [![npm version](https://img.shields.io/npm/v/@uluops/sdk-core.svg)](https://www.npmjs.com/package/@uluops/sdk-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20.3+-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.15.0**
+**Current version: 0.18.0**
 
 ## Quick Start
 
@@ -762,17 +762,46 @@ the client reference). Because the swap changes which credential every subsequen
 request carries, it emits an [`auth_strategy_replaced`](#security-events) security
 event so embedders can observe and correlate credential changes.
 
+## Per-response organization context (v0.18.0+)
+
+```typescript
+import { HttpClient } from '@uluops/sdk-core/http';
+
+const client = new HttpClient({
+  baseUrl: 'https://api.example.com/v1',
+  sdkName: 'my-app', sdkVersion: '1.0.0', loggerPrefix: '[my-app]',
+  apiKey: 'ulr_your-api-key-here',
+});
+const response = await client.request<{ items: string[] }>(
+  'GET', '/items', undefined, { withResponseContext: true },
+);
+console.log(response.data.items);
+console.log(response.context?.orgSlug); // Authenticated server context, if available
+```
+
+The opt-in `request` overload returns `{ data: T, context: ResponseContext | null }`.
+Existing calls still return `T`. Context contains `version: 1`, `orgSlug`, and
+`source` (`bound-key`, `request`, or `personal-default`), parsed from the response's
+three `X-UluOps-*` headers. It is independent of the organization requested by the
+client and is not a new authorization credential.
+
+Metadata belongs to that response; concurrent calls never share a last-response
+slot. Missing, partial, unsupported-version or malformed headers yield `null`
+without discarding successful data. HTTP and JSON-parse errors carry optional
+`responseContext`; that context does not prove a mutation committed. Network
+failures have no authenticated response context. Raw/binary methods retain their
+existing return shapes. When combined with `rawEnvelope: true`, `data` contains
+the full parsed JSON envelope instead of the usual unwrapped payload.
+
+### Structured error compatibility
+
+`NotFoundError` (404) and `ConflictError` (409) retain the API's specific `code`
+and `details`, including versioned idempotency refusals. Generic `NOT_FOUND` and
+`CONFLICT` codes remain the defaults when the server supplies no code. Consumers
+that branch only on those generic codes should use the typed error class or HTTP
+status for broad handling, and the specific code for a targeted remedy. Existing
+constructor arguments remain valid; new code/details arguments are optional.
+
 ## License
 
 MIT License - see [LICENSE](./LICENSE) for details.
-
-### Response context
-
-`client.request<T>(method, path, body, { withResponseContext: true })` returns
-`{ data: T, context: ResponseContext | null }`. Existing calls still return `T`.
-`ResponseContext` contains `version: 1`, `orgSlug`, and `source` (`bound-key`,
-`request`, or `personal-default`). Metadata belongs to the individual response;
-concurrent calls never share a last-response slot. Missing, partial or malformed
-headers produce `null` and do not invalidate successful data. HTTP and JSON-parse
-errors carry optional `responseContext`; it establishes org context, not whether
-a mutation committed. Raw/binary methods retain their existing return shape.

@@ -2,15 +2,15 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
-## [Unreleased]
+## [0.18.0] — 2026-09-19
 
-### F13
+### Added
 
-- Add request-local withResponseContext envelopes and same-response error metadata. Missing or malformed headers yield null without discarding successful data.
+- Add opt-in `request(..., { withResponseContext: true })` envelopes and same-response error metadata. Missing or malformed headers yield null without discarding successful data; concurrent calls keep independent context. Existing plain/raw/binary return shapes remain unchanged.
 
-### F20
+### Changed
 
-- Preserve API-specific 404 and 409 codes/details in typed errors, including organization authorization failures and versioned idempotency refusals.
+- Preserve API-specific 404 and 409 codes/details in `NotFoundError` and `ConflictError`, including organization authorization failures and versioned idempotency refusals. Generic codes remain defaults when omitted by the server. Callers matching only generic codes should use typed classes/status for broad handling. Constructors remain backward-compatible.
 
 ### Fixed
 
