@@ -1,3 +1,4 @@
+import { parseResponseContext, attachResponseContext, type WithResponseContext } from './response-context.js';
 /**
  * HTTP client for UluOps APIs using native fetch
  *
@@ -56,6 +57,16 @@ import type { FetchClient } from './fetch-adapter.js';
 import type { AuthType, SecurityEvent, SecurityEventHandler } from './security-events.js';
 import { createLogger, type Logger } from '../utils/logger.js';
 import { sleep, parseRateLimitHeaders, type RateLimitInfo } from '../utils/helpers.js';
+
+export interface RequestOptions {
+  params?: object;
+  retries?: number;
+  retryMutations?: boolean;
+  headers?: Record<string, string>;
+  skipAuth?: boolean;
+  rawEnvelope?: boolean;
+  withResponseContext?: boolean;
+}
 
 /**
  * HTTP client configuration
@@ -283,8 +294,9 @@ export class HttpClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+        let response: Response | undefined;
         try {
-          const response = await fetch(fullUrl, {
+          response = await fetch(fullUrl, {
             method: 'POST',
             headers: this.defaultHeaders,
             body: JSON.stringify(body),
@@ -306,7 +318,9 @@ export class HttpClient {
           const data = await response.json();
           return { data } as { data: { data: T } };
         } catch (error) {
-          throw this.handleFetchError(error);
+          const mapped = this.handleFetchError(error);
+          attachResponseContext(mapped, response ? parseResponseContext(response.headers) : null);
+          throw mapped;
         } finally {
           clearTimeout(timeoutId);
         }
@@ -340,20 +354,13 @@ export class HttpClient {
    * **204 No Content:** Returns `undefined as T`. Callers expecting a 204
    * should type as `request<void>(...)` or handle the undefined case.
    */
+  request<T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', endpoint: string, data: object | undefined, options: RequestOptions & { withResponseContext: true }): Promise<WithResponseContext<T>>;
+  request<T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', endpoint: string, data?: object, options?: RequestOptions & { withResponseContext?: false }): Promise<T>;
+  request<T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', endpoint: string, data: object | undefined, options: RequestOptions): Promise<T | WithResponseContext<T>>;
   async request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
-    endpoint: string,
-    data?: object,
-    options?: {
-      params?: object;
-      retries?: number;
-      retryMutations?: boolean;
-      headers?: Record<string, string>;
-      skipAuth?: boolean;
-      /** Return the full JSON body without unwrapping the `{ data: T }` envelope */
-      rawEnvelope?: boolean;
-    }
-  ): Promise<T> {
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', endpoint: string,
+    data?: object, options?: RequestOptions
+  ): Promise<T | WithResponseContext<T>> {
     const maxAttempts = Math.max(1, options?.retries ?? this.retries);
     const canRetry = method === 'GET' || (options?.retryMutations === true);
     return this.runWithResilience(method, endpoint, canRetry, maxAttempts, (refreshAttempted) =>
@@ -714,7 +721,9 @@ export class HttpClient {
       if (error instanceof SdkApiError) {
         this.logger.debug(`${method} ${endpoint} -> ${error.statusCode ?? 'ERROR'}`);
       }
-      throw this.handleFetchError(error);
+      const mapped = this.handleFetchError(error);
+      attachResponseContext(mapped, response ? parseResponseContext(response.headers) : null);
+      throw mapped;
     }
   }
 
@@ -727,9 +736,9 @@ export class HttpClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: object,
-    options?: { params?: object; headers?: Record<string, string>; skipAuth?: boolean; rawEnvelope?: boolean },
+    options?: RequestOptions,
     refreshAttempted = false
-  ): Promise<T> {
+  ): Promise<T | WithResponseContext<T>> {
     const { response, releaseTimeout } = await this.doFetchCore(
       method,
       endpoint,
@@ -738,16 +747,18 @@ export class HttpClient {
       refreshAttempted
     );
 
+    const context = parseResponseContext(response.headers);
+    const wrap = (data: T): T | WithResponseContext<T> => options?.withResponseContext ? { data, context } : data;
     try {
       if (response.status === 204) {
         // SAFETY: `as T` — 204 No Content has no body; callers should type as `request<void>(...)`
-        return undefined as T;
+        return wrap(undefined as T);
       }
 
       const text = await response.text();
       if (!text) {
         // SAFETY: `as T` — empty body equivalent to 204; see above
-        return undefined as T;
+        return wrap(undefined as T);
       }
 
       if (options?.rawEnvelope) {
@@ -757,15 +768,17 @@ export class HttpClient {
         } catch {
           throw new SdkApiError(response.status, `Invalid JSON response from ${method} ${endpoint}`);
         }
-        return parsed as T;
+        return wrap(parsed as T);
       }
 
-      return this.parseJsonEnvelope<T>(text, response.status, method, endpoint);
+      return wrap(this.parseJsonEnvelope<T>(text, response.status, method, endpoint));
     } catch (error) {
       if (error instanceof SdkApiError) {
         this.logger.debug(`${method} ${endpoint} -> ${error.statusCode ?? 'ERROR'}`);
       }
-      throw this.handleFetchError(error);
+      const mapped = this.handleFetchError(error);
+      attachResponseContext(mapped, context);
+      throw mapped;
     } finally {
       releaseTimeout();
     }
@@ -809,8 +822,9 @@ export class HttpClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+    let response: Response | undefined;
     try {
-      const response = await fetch(url.toString(), {
+      response = await fetch(url.toString(), {
         method,
         headers,
         body: options?.body,
@@ -843,7 +857,9 @@ export class HttpClient {
 
       return response;
     } catch (error) {
-      throw this.handleFetchError(error);
+      const mapped = this.handleFetchError(error);
+      attachResponseContext(mapped, response ? parseResponseContext(response.headers) : null);
+      throw mapped;
     } finally {
       clearTimeout(timeoutId);
     }

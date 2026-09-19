@@ -1,5 +1,5 @@
 // HTTP
-export { HttpClient, type HttpClientConfig, type RequestStreamOptions } from './http/http-client.js';
+export { HttpClient, type HttpClientConfig, type RequestStreamOptions, type RequestOptions } from './http/http-client.js';
 export {
   ApiKeyAuth,
   JwtSessionAuth,
@@ -115,3 +115,5 @@ export {
   verifyHash,
   verifyPromptHash,
 } from './utils/hash.js';
+
+export { parseResponseContext, attachResponseContext, type ResponseContext, type WithResponseContext } from './http/response-context.js';

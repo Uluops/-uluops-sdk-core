@@ -765,3 +765,14 @@ event so embedders can observe and correlate credential changes.
 ## License
 
 MIT License - see [LICENSE](./LICENSE) for details.
+
+### Response context
+
+`client.request<T>(method, path, body, { withResponseContext: true })` returns
+`{ data: T, context: ResponseContext | null }`. Existing calls still return `T`.
+`ResponseContext` contains `version: 1`, `orgSlug`, and `source` (`bound-key`,
+`request`, or `personal-default`). Metadata belongs to the individual response;
+concurrent calls never share a last-response slot. Missing, partial or malformed
+headers produce `null` and do not invalidate successful data. HTTP and JSON-parse
+errors carry optional `responseContext`; it establishes org context, not whether
+a mutation committed. Raw/binary methods retain their existing return shape.

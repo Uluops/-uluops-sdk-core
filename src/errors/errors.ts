@@ -1,3 +1,4 @@
+import type { ResponseContext } from '../http/response-context.js';
 /**
  * Error hierarchy for UluOps SDKs
  *
@@ -21,6 +22,7 @@ export class SdkApiError extends Error {
    * `message` and `details`, which are already sanitized; requestId was not.
    */
   public readonly requestId?: string;
+  public readonly responseContext?: ResponseContext | null;
 
   constructor(
     public readonly statusCode: number,
@@ -50,6 +52,7 @@ export class SdkApiError extends Error {
   toJSON(): Record<string, unknown> {
     return {
       name: this.name,
+      ...(this.responseContext !== undefined ? { responseContext: this.responseContext } : {}),
       message: sanitizeString(this.message, 0),
       statusCode: this.statusCode,
       code: this.code,

@@ -1,4 +1,4 @@
-export { HttpClient, type HttpClientConfig, type RequestStreamOptions } from './http-client.js';
+export { HttpClient, type HttpClientConfig, type RequestStreamOptions, type RequestOptions } from './http-client.js';
 export {
   ApiKeyAuth,
   JwtSessionAuth,
@@ -19,3 +19,5 @@ export type {
   TokenRefreshFailedEvent,
   AuthStrategyReplacedEvent,
 } from './security-events.js';
+
+export { parseResponseContext, attachResponseContext, type ResponseContext, type WithResponseContext } from './response-context.js';

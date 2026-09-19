@@ -4,6 +4,10 @@ All notable changes to `@uluops/sdk-core` will be documented in this file.
 
 ## [Unreleased]
 
+### F13
+
+- Add request-local withResponseContext envelopes and same-response error metadata. Missing or malformed headers yield null without discarding successful data.
+
 ### F20
 
 - Preserve API-specific 404 and 409 codes/details in typed errors, including organization authorization failures and versioned idempotency refusals.
