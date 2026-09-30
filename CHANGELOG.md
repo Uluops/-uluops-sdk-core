@@ -2,6 +2,13 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
+## [0.18.1] — Unreleased
+
+### Fixed
+
+- Preserve API cause codes and structured details on HTTP 400, 422, and 429 errors, so SDK and MCP consumers can choose the correct recovery action.
+- Use the error body's request ID when the `x-request-id` header is absent, while keeping the header authoritative when present.
+
 ## [0.18.0] — 2026-09-19
 
 ### Added

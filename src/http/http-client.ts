@@ -201,7 +201,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function extractErrorBody(
   data: unknown
-): { code?: string; message?: string; details?: Record<string, unknown> } | undefined {
+): { code?: string; message?: string; details?: Record<string, unknown>; requestId?: string } | undefined {
   if (!isRecord(data) || !('error' in data)) return undefined;
   const error = data.error;
   if (!isRecord(error)) return undefined;
@@ -216,6 +216,7 @@ function extractErrorBody(
     code: typeof error.code === 'string' ? error.code : undefined,
     message: typeof error.message === 'string' ? error.message : undefined,
     details,
+    requestId: typeof error.requestId === 'string' ? error.requestId : undefined,
   };
 }
 
@@ -1241,7 +1242,7 @@ export class HttpClient {
     headers: Headers
   ): SdkApiError {
     const apiError = extractErrorBody(data);
-    const requestId = headers.get('x-request-id') ?? undefined;
+    const requestId = headers.get('x-request-id') ?? apiError?.requestId;
     const retryAfter = headers.get('retry-after');
 
     // Fast path: no details and no retry-after to process

@@ -374,6 +374,7 @@ strategy.getType(); // 'api_key'
 ### Errors
 
 All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`, `details`, and `requestId`.
+For HTTP 400, 422 and 429, the typed subclasses retain the server's cause `code` and structured `details`. The request ID comes from `x-request-id`, or from the error body when the header is absent. A caller should use the cause and application-state details before choosing a recovery action; an uncertain write requires a state read before retry.
 
 #### Error Classes
 

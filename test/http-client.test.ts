@@ -293,6 +293,19 @@ describe('HTTP error mapping', () => {
     await expect(client.get('/e400')).rejects.toThrow(ValidationError);
   });
 
+  it('preserves API recovery context and body requestId when the header is absent', async () => {
+    nock(TEST_BASE_URL)
+      .get(apiPath('/recovery-context'))
+      .reply(400, { error: { code: 'INVALID_TRANSITION', message: 'Cannot archive published definition', requestId: 'body-request-id', details: { allowedTransitions: ['deprecated'] } } });
+
+    const client = makeClient();
+    await expect(client.get('/recovery-context')).rejects.toMatchObject({
+      code: 'INVALID_TRANSITION',
+      requestId: 'body-request-id',
+      details: { allowedTransitions: ['deprecated'] },
+    });
+  });
+
   it('should map 401 to UnauthorizedError', async () => {
     nock(TEST_BASE_URL)
       .get(apiPath('/e401'))

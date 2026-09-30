@@ -66,8 +66,8 @@ export class SdkApiError extends Error {
  * 400 Bad Request - Validation errors
  */
 export class ValidationError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
-    super(HTTP_STATUS.BAD_REQUEST, message, ERROR_CODES.VALIDATION_ERROR, details, requestId);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string, code?: string) {
+    super(HTTP_STATUS.BAD_REQUEST, message, code ?? ERROR_CODES.VALIDATION_ERROR, details, requestId);
     this.name = 'ValidationError';
   }
 }
@@ -152,8 +152,8 @@ export class PayloadTooLargeError extends SdkApiError {
  * 422 Unprocessable Entity - Request is valid but cannot be processed
  */
 export class UnprocessableError extends SdkApiError {
-  constructor(message: string, details?: Record<string, unknown>, requestId?: string) {
-    super(HTTP_STATUS.UNPROCESSABLE_ENTITY, message, ERROR_CODES.UNPROCESSABLE_ENTITY, details, requestId);
+  constructor(message: string, details?: Record<string, unknown>, requestId?: string, code?: string) {
+    super(HTTP_STATUS.UNPROCESSABLE_ENTITY, message, code ?? ERROR_CODES.UNPROCESSABLE_ENTITY, details, requestId);
     this.name = 'UnprocessableError';
   }
 }
@@ -164,11 +164,11 @@ export class UnprocessableError extends SdkApiError {
 export class RateLimitError extends SdkApiError {
   public readonly retryAfter?: number;
 
-  constructor(message?: string, retryAfter?: number, requestId?: string) {
+  constructor(message?: string, retryAfter?: number, requestId?: string, code?: string, details?: Record<string, unknown>) {
     const msg = message ?? (retryAfter
       ? `Rate limit exceeded. Retry after ${retryAfter} seconds`
       : 'Rate limit exceeded');
-    super(HTTP_STATUS.TOO_MANY_REQUESTS, msg, ERROR_CODES.RATE_LIMITED, { retryAfter }, requestId);
+    super(HTTP_STATUS.TOO_MANY_REQUESTS, msg, code ?? ERROR_CODES.RATE_LIMITED, { ...details, retryAfter }, requestId);
     this.name = 'RateLimitError';
     this.retryAfter = retryAfter;
   }
@@ -299,7 +299,7 @@ export function createErrorFromStatus(
   const safe = sanitizeString(message, 0);
   switch (statusCode) {
     case HTTP_STATUS.BAD_REQUEST:
-      return new ValidationError(safe, details, requestId);
+      return new ValidationError(safe, details, requestId, code);
     case HTTP_STATUS.UNAUTHORIZED:
       return new UnauthorizedError(safe, requestId);
     case HTTP_STATUS.FORBIDDEN:
@@ -313,10 +313,10 @@ export function createErrorFromStatus(
       return new PayloadTooLargeError(safe, maxSize, requestId);
     }
     case HTTP_STATUS.UNPROCESSABLE_ENTITY:
-      return new UnprocessableError(safe, details, requestId);
+      return new UnprocessableError(safe, details, requestId, code);
     case HTTP_STATUS.TOO_MANY_REQUESTS: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new RateLimitError(safe, retryAfter, requestId);
+      return new RateLimitError(safe, retryAfter, requestId, code, details);
     }
     case HTTP_STATUS.SERVICE_UNAVAILABLE:
     case HTTP_STATUS.BAD_GATEWAY:
@@ -419,4 +419,3 @@ export function isRedirectError(error: unknown): error is RedirectError {
 export function isTimeoutError(error: unknown): error is TimeoutError {
   return error instanceof TimeoutError;
 }
-

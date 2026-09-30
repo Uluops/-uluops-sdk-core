@@ -555,3 +555,15 @@ describe('F20 structured 404/409 causes', () => {
     expect(error).toMatchObject({ statusCode: status, code, details: { applicationState: 'not_applied' }, requestId: 'f20-request' });
   });
 });
+
+describe('F16 recovery context', () => {
+  it.each([
+    [400, 'INVALID_TRANSITION', ValidationError],
+    [422, 'INVALID_RENDER_TARGET', UnprocessableError],
+    [429, 'RATE_LIMIT_EXCEEDED', RateLimitError],
+  ] as const)('preserves %s/%s cause and details', (status, code, errorClass) => {
+    const error = createErrorFromStatus(status, 'Request refused', code, { reason: 'specific', retryAfter: 12 }, 'f16-request');
+    expect(error).toBeInstanceOf(errorClass);
+    expect(error).toMatchObject({ statusCode: status, code, details: { reason: 'specific', retryAfter: 12 }, requestId: 'f16-request' });
+  });
+});
