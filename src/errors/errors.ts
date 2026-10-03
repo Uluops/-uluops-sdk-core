@@ -51,7 +51,6 @@ export class SdkApiError extends Error {
    * this was status-only, so every GET 503 was retried regardless.
    */
   isRetryable(): boolean {
-    if (this.details?.retryable === false) return false;
     return (RETRYABLE_STATUS_CODES as Set<number>).has(this.statusCode);
   }
 
