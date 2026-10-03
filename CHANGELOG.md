@@ -2,7 +2,7 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
-## [0.19.0] — Unreleased
+## [0.19.0] — 2026-10-03
 
 ### Changed
 
