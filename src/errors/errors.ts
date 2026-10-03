@@ -343,7 +343,7 @@ export function createErrorFromStatus(
     case HTTP_STATUS.BAD_GATEWAY:
     case HTTP_STATUS.GATEWAY_TIMEOUT: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new ServiceUnavailableError(safe, retryAfter, requestId, details);
+      return new ServiceUnavailableError(safe, retryAfter, requestId);
     }
     default:
       return new SdkApiError(statusCode, safe, code, details, requestId);
