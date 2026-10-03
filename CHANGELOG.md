@@ -2,7 +2,14 @@
 
 All notable changes to `@uluops/sdk-core` will be documented in this file.
 
-## [0.18.1] — Unreleased
+## [0.19.0] — Unreleased
+
+### Changed
+
+- **`SdkApiError.isRetryable()` honours a server opt-out: `details.retryable === false` makes any error non-retryable**, whatever its status code. Only a literal `false` opts out; a missing key or a string leaves the status-code rule (502/503/504/429) in force, so every existing 503 still retries. Why: the tracker's version-dispositions route (definition-version-comparison spec v0.10.0 §3 D7, §11 item 11) answers 503 `busy` when its deliberately small isolated pool is saturated and 503 `query_timeout` when a query exceeds its budget. A retry re-queues load on the pool that just refused it — three GETs per refusal at the default `retries: 3` — so the route marks those responses non-retryable and the client must obey. Semantics note: this changes what `isRetryable()` means without changing its signature — it is no longer a pure function of `statusCode`. A consumer that reimplements retry by status code alone (rather than calling `isRetryable()`) will still retry these responses.
+- **`ServiceUnavailableError` retains the server's `details`** (502, 503 and 504, all of which `createErrorFromStatus` maps to this class). Before, the constructor took only `retryAfter` and every other detail was discarded, so the opt-out above could never be seen and `details.reason` (`busy`, `query_timeout`) never reached the MCP or CLI for a typed message. `retryAfter` is merged in and wins on conflict, so `details.retryAfter` and the `retryAfter` property still agree. The constructor gains a fourth optional `details` parameter; the three-argument form is unchanged. `code` is still always `SERVICE_UNAVAILABLE` and `statusCode` is still 503 for 502/504 — neither is changed here.
+
+## [0.18.1] — 2026-09-30
 
 ### Fixed
 

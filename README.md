@@ -11,7 +11,7 @@
 
 Shared infrastructure for UluOps SDKs. Provides HTTP client, authentication strategies, error hierarchy, configuration loaders, and utility functions used by [`@uluops/ops-sdk`](https://www.npmjs.com/package/@uluops/ops-sdk) and [`@uluops/registry-sdk`](https://www.npmjs.com/package/@uluops/registry-sdk).
 
-**Current version: 0.18.0**
+**Current version: 0.19.0**
 
 ## Quick Start
 
@@ -271,6 +271,7 @@ The client automatically retries on transient errors (502, 503, 504, 429) and ne
 - **`retries: 0`**: Makes exactly one attempt (no retries) and surfaces the real typed error (e.g. `NetworkError`) — it does **not** skip the request
 - **401 handling**: Automatic token refresh with deduplication (one refresh at a time). A 401 with no configured credentials throws a `UnauthorizedError` explaining how to set them; a 401 with credentials present preserves the server's reason and appends guidance that the credential may be expired, revoked, or invalid
 - **Redirects are NOT retried**: an upstream 3xx from the configured origin throws a non-retryable `RedirectError` (see [Security Events](#security-events)) — it is rejected before the request body is replayed, not treated as a transient fault
+- **Server opt-out (v0.19.0+)**: a response whose error `details.retryable` is literally `false` is never retried, whatever its status — e.g. the tracker's 503 `busy` / `query_timeout`. The reason survives on `error.details.reason`
 - **Visibility**: Use `onRetry` callback to observe retry attempts in real time
 
 ---
@@ -374,7 +375,7 @@ strategy.getType(); // 'api_key'
 ### Errors
 
 All API errors extend `SdkApiError` and include `statusCode`, `code`, `message`, `details`, and `requestId`.
-For HTTP 400, 422 and 429, the typed subclasses retain the server's cause `code` and structured `details`. The request ID comes from `x-request-id`, or from the error body when the header is absent. A caller should use the cause and application-state details before choosing a recovery action; an uncertain write requires a state read before retry.
+For HTTP 400, 422 and 429, the typed subclasses retain the server's cause `code` and structured `details`; for 502, 503 and 504, `ServiceUnavailableError` retains `details` (its `code` is always `SERVICE_UNAVAILABLE`). `isRetryable()` returns false when `details.retryable === false`. The request ID comes from `x-request-id`, or from the error body when the header is absent. A caller should use the cause and application-state details before choosing a recovery action; an uncertain write requires a state read before retry.
 
 #### Error Classes
 
@@ -388,7 +389,7 @@ For HTTP 400, 422 and 429, the typed subclasses retain the server's cause `code`
 | `PayloadTooLargeError` | 413 | Request body exceeds size limit |
 | `UnprocessableError` | 422 | Valid syntax but invalid semantics |
 | `RateLimitError` | 429 | Too many requests (`retryAfter` property) |
-| `ServiceUnavailableError` | 503 | Server temporarily down (`retryAfter` property) |
+| `ServiceUnavailableError` | 502, 503, 504 | Server temporarily down (`retryAfter` property; server `details` kept) |
 | `NetworkError` | 0 | DNS failure, connection refused (auto-retried) |
 | `RedirectError` | 0 | Configured origin returned a 3xx the SDK refuses to follow (**not** retried) |
 | `TimeoutError` | 0 | Request exceeded timeout |

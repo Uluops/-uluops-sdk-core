@@ -40,9 +40,18 @@ export class SdkApiError extends Error {
   }
 
   /**
-   * Check if this error is retryable (transient server errors)
+   * Check if this error is retryable (transient server errors).
+   *
+   * The status code decides by default, but the server can opt a response out
+   * with `details.retryable === false` (only a literal `false`; a string or a
+   * missing key leaves the status-code rule in force). The tracker's
+   * version-dispositions route uses this on 503 `busy` / `query_timeout`:
+   * those refusals come from a deliberately small isolated pool, and a client
+   * retry only re-queues load on the pool that just refused it. Before 0.19.0
+   * this was status-only, so every GET 503 was retried regardless.
    */
   isRetryable(): boolean {
+    if (this.details?.retryable === false) return false;
     return (RETRYABLE_STATUS_CODES as Set<number>).has(this.statusCode);
   }
 
@@ -176,12 +185,24 @@ export class RateLimitError extends SdkApiError {
 
 /**
  * 503 Service Unavailable - Server temporarily unavailable
+ *
+ * Also constructed for 502 and 504 by `createErrorFromStatus`. Retains the
+ * server's `details` (merged with `retryAfter`, which wins on conflict) so a
+ * structured refusal such as `{ retryable: false, reason: 'busy' }` reaches
+ * both `isRetryable()` and the consumer. Before 0.19.0 the constructor took
+ * only `retryAfter` and every other detail was discarded.
  */
 export class ServiceUnavailableError extends SdkApiError {
   public readonly retryAfter?: number;
 
-  constructor(message = 'Service temporarily unavailable', retryAfter?: number, requestId?: string) {
+  constructor(
+    message = 'Service temporarily unavailable',
+    retryAfter?: number,
+    requestId?: string,
+    details?: Record<string, unknown>
+  ) {
     super(HTTP_STATUS.SERVICE_UNAVAILABLE, message, ERROR_CODES.SERVICE_UNAVAILABLE, {
+      ...details,
       retryAfter,
     }, requestId);
     this.name = 'ServiceUnavailableError';
@@ -322,7 +343,7 @@ export function createErrorFromStatus(
     case HTTP_STATUS.BAD_GATEWAY:
     case HTTP_STATUS.GATEWAY_TIMEOUT: {
       const retryAfter = typeof details?.retryAfter === 'number' ? details.retryAfter : undefined;
-      return new ServiceUnavailableError(safe, retryAfter, requestId);
+      return new ServiceUnavailableError(safe, retryAfter, requestId, details);
     }
     default:
       return new SdkApiError(statusCode, safe, code, details, requestId);
