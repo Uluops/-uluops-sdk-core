@@ -202,7 +202,6 @@ export class ServiceUnavailableError extends SdkApiError {
     details?: Record<string, unknown>
   ) {
     super(HTTP_STATUS.SERVICE_UNAVAILABLE, message, ERROR_CODES.SERVICE_UNAVAILABLE, {
-      ...details,
       retryAfter,
     }, requestId);
     this.name = 'ServiceUnavailableError';
